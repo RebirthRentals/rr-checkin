@@ -258,22 +258,32 @@
     });
   })();
   function drawDots() { Array.prototype.forEach.call($('dots').children, function (el, i) { el.classList.toggle('on', i < pin.length); }); }
-  var signingIn = false;
-  function doLogin() {
-    if (signingIn) return;
-    signingIn = true;
-    var p = pin;
-    $('pinErr').style.color = '#9aa4b2'; $('pinErr').textContent = 'Signing in…';
+  var signingIn = false, loginTry = 0, loginStarted = 0;
+  function doLogin(attempt) {
+    attempt = attempt || 1;
+    if (signingIn && attempt === 1) return;
+    signingIn = true; loginStarted = Date.now();
+    var p = pin, my = ++loginTry;
+    $('pinErr').style.color = '#9aa4b2';
+    $('pinErr').textContent = attempt === 1 ? 'Signing in…' : 'Weak signal — trying again (' + attempt + ' of 3)…';
     api('login', { pin: p }).then(function (r) {
+      if (my !== loginTry) return;                     // an older, stalled attempt finally answered
       signingIn = false; $('pinErr').style.color = ''; $('pinErr').textContent = '';
       session = r; store('rr_session', r); pin = ''; drawDots();
-      try { enterHome(); } catch (e) { $('pinErr').textContent = 'Error opening home: ' + e.message; }
+      try { enterHome(); pump(); } catch (e) { $('pinErr').textContent = 'Error opening home: ' + e.message; }
     }).catch(function (e) {
+      if (my !== loginTry) return;
+      if (!e.server && attempt < 3) { setTimeout(function () { if (my === loginTry) doLogin(attempt + 1); }, 1500); return; }
       signingIn = false; $('pinErr').style.color = '';
-      pin = ''; drawDots(); $('pinErr').textContent = (e.server || e.detail) ? e.message : 'No connection — try again';
+      pin = ''; drawDots();
+      $('pinErr').textContent = e.server ? e.message : 'Can’t reach the server — check signal and enter your PIN again';
     });
   }
-  window.addEventListener('pageshow', function (e) { if (e.persisted && signingIn) { signingIn = false; pin = ''; drawDots(); $('pinErr').textContent = ''; } });
+  // Safari pauses timers while the screen is locked; if a sign-in stalled, restart it when the page comes back
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden && signingIn && Date.now() - loginStarted > 15000) doLogin(2);
+  });
+  window.addEventListener('pageshow', function (e) { if (e.persisted && signingIn) { loginTry++; signingIn = false; pin = ''; drawDots(); $('pinErr').textContent = ''; } });
   function signOut() { session = null; store('rr_session', null); pin = ''; drawDots(); show('s-pin'); }
   $('logoutBtn').onclick = signOut;
 
