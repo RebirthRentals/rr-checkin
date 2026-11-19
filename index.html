@@ -1,279 +1,590 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>RR Check-In · prototype v3</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="RR Check-In">
+<meta name="theme-color" content="#0f1115">
+<title>RR Check-In</title>
 <style>
-  :root { --bg:#0f1115; --card:#1a1d24; --line:#2a2f3a; --text:#eef0f4; --muted:#9aa3b2; --ok:#3ecf8e; --bad:#ff6b6b; --warn:#f5b84b; --accent:#4c8dff; }
+  :root { --bg:#0f1115; --card:#1a1d24; --card2:#232833; --line:#2a2f3a; --text:#eef0f4; --muted:#9aa3b2; --ok:#3ecf8e; --bad:#ff6b6b; --warn:#f5b84b; --accent:#4c8dff; }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-  html, body, button, label, .btn { touch-action:manipulation; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
-  #cam, #cam * { touch-action:none; }
-  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-  header { padding:16px 16px 8px; }
-  h1 { font-size:20px; margin:0; }
-  .sub { color:var(--muted); font-size:14px; margin-top:2px; }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; margin:12px; padding:14px; }
-  .card h2 { font-size:16px; margin:0 0 6px; }
-  .card p { margin:4px 0 10px; color:var(--muted); font-size:14px; }
-  button, .btn { display:block; width:100%; border:0; border-radius:12px; padding:14px; font-size:17px; font-weight:600; background:var(--accent); color:#fff; text-align:center; cursor:pointer; }
-  button.secondary, .btn.secondary { background:#2b3140; }
+  html, body, button, label, .btn, .tap { touch-action:manipulation; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
+  input, textarea { -webkit-user-select:text; user-select:text; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
+  .screen { display:none; padding:16px; max-width:560px; margin:0 auto; }
+  .screen.on { display:block; }
+  h1 { font-size:22px; margin:4px 0 2px; }
+  h2 { font-size:17px; margin:22px 0 8px; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.04em; }
+  .sub { color:var(--muted); font-size:14px; }
+  .row { display:flex; gap:8px; align-items:center; }
+  .row > .grow { flex:1; }
+  button, .btn { display:block; width:100%; border:0; border-radius:14px; padding:16px; font-size:18px; font-weight:650; background:var(--accent); color:#fff; text-align:center; cursor:pointer; font-family:inherit; }
+  button.secondary, .btn.secondary { background:var(--card2); }
+  button.small { width:auto; padding:8px 14px; font-size:15px; border-radius:10px; }
   button:disabled { opacity:.45; }
-  .row { display:flex; gap:8px; }
-  .row > * { flex:1; }
-  .status { font-size:14px; margin-top:8px; }
-  .ok { color:var(--ok); } .bad { color:var(--bad); } .warn { color:var(--warn); } .muted { color:var(--muted); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:14px; margin:10px 0; }
+  .tap:active { background:var(--card2); }
+  .plate { font-size:26px; font-weight:800; letter-spacing:.06em; font-family:ui-monospace, Menlo, monospace; }
+  .muted { color:var(--muted); } .ok { color:var(--ok); } .bad { color:var(--bad); } .warn { color:var(--warn); }
+  .tag { display:inline-block; font-size:12px; font-weight:700; padding:3px 8px; border-radius:999px; background:var(--card2); color:var(--muted); margin-left:6px; vertical-align:middle; }
+  .tag.bad { background:#3a1d22; color:var(--bad); } .tag.warn { background:#3a301a; color:var(--warn); } .tag.ok { background:#163326; color:var(--ok); }
+  .job.done { opacity:.55; } .job.overdue { border-color:var(--bad); }
+  .kv { font-size:15px; margin-top:6px; } .kv b { color:var(--muted); font-weight:600; }
+  a.nav { color:var(--accent); font-weight:600; text-decoration:none; white-space:nowrap; }
+  .banner { background:#3a301a; color:var(--warn); border-radius:12px; padding:10px 12px; font-size:15px; margin:10px 0; }
+  .banner.ok { background:#163326; color:var(--ok); }
+  input.search, textarea, input.text { width:100%; font-size:18px; padding:14px; border-radius:12px; border:1px solid var(--line); background:var(--card); color:var(--text); font-family:inherit; }
+  textarea { min-height:90px; font-size:16px; }
+  /* PIN */
+  .dots { display:flex; justify-content:center; gap:16px; margin:28px 0; }
+  .dot { width:18px; height:18px; border-radius:50%; border:2px solid var(--muted); }
+  .dot.on { background:var(--text); border-color:var(--text); }
+  .keys { display:grid; grid-template-columns:repeat(3, 1fr); gap:12px; max-width:320px; margin:0 auto; }
+  .keys button { font-size:26px; padding:18px 0; background:var(--card); }
+  /* type buttons */
+  .types button { margin:10px 0; background:var(--card2); text-align:left; padding:18px; }
+  .types button.sel { background:var(--accent); }
+  .types small { display:block; font-weight:400; font-size:14px; opacity:.8; }
+  /* camera */
   #cam { display:none; position:fixed; inset:0; background:#000; z-index:10; flex-direction:column; }
   #cam.on { display:flex; }
-  #video { flex:1; width:100%; object-fit:cover; background:#000; }
-  #camTop { position:absolute; top:0; left:0; right:0; padding:14px 16px; padding-top:max(14px, env(safe-area-inset-top)); background:linear-gradient(#000a,#0000); display:flex; justify-content:space-between; align-items:center; font-weight:600; }
-  #shotLabel { background:#0008; padding:6px 10px; border-radius:999px; }
-  #upCount { background:#0008; padding:6px 10px; border-radius:999px; font-size:14px; }
-  #camBottom { padding:16px; padding-bottom:max(16px, env(safe-area-inset-bottom)); display:flex; align-items:center; justify-content:space-between; background:#000; }
-  #shutter { width:76px; height:76px; border-radius:50%; background:#fff; border:5px solid #888; padding:0; }
-  #shutter:active { transform:scale(.94); }
-  #camDone, #camFlip { width:auto; padding:12px 16px; font-size:15px; background:#2b3140; }
-  #flash { position:fixed; inset:0; background:#fff; opacity:0; pointer-events:none; z-index:11; transition:opacity .15s; }
-  .thumbs { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
-  .thumb { position:relative; width:64px; height:64px; border-radius:8px; overflow:hidden; background:#000; }
-  .thumb img { width:100%; height:100%; object-fit:cover; }
-  .thumb span { position:absolute; bottom:2px; right:3px; font-size:12px; text-shadow:0 0 3px #000; }
-  .thumb.odo { outline:2px solid var(--warn); }
-  table { width:100%; border-collapse:collapse; font-size:15px; }
-  td { padding:8px 4px; border-bottom:1px solid var(--line); vertical-align:top; }
-  td:last-child { text-align:right; }
+  #cam, #cam * { touch-action:none; }
+  #video { flex:1; width:100%; object-fit:cover; background:#000; min-height:0; }
+  #camFrame { position:absolute; inset:0; pointer-events:none; border:0 solid var(--bad); transition:border-width .15s; }
+  #cam.damage #camFrame { border-width:6px; }
+  #camTop { position:absolute; top:0; left:0; right:0; padding:12px 14px; padding-top:max(12px, env(safe-area-inset-top)); background:linear-gradient(#000c,#0000); display:flex; justify-content:space-between; align-items:flex-start; gap:8px; font-weight:600; }
+  .pill { background:#000a; padding:6px 10px; border-radius:999px; font-size:14px; }
+  #shotLabel { font-size:15px; }
+  #camBottom { padding:14px 16px; padding-bottom:max(14px, env(safe-area-inset-bottom)); display:flex; align-items:center; justify-content:space-between; background:#000; gap:10px; }
+  #camBottom button { width:84px; padding:12px 6px; font-size:14px; background:var(--card2); border-radius:12px; }
+  #camBottom #dmgBtn.on { background:var(--bad); }
+  #shutter { width:78px !important; height:78px; border-radius:50% !important; background:#fff !important; border:5px solid #888; padding:0 !important; flex:none; }
+  #shutter:active { transform:scale(.93); }
+  #flash { position:fixed; inset:0; background:#fff; opacity:0; pointer-events:none; z-index:11; transition:opacity .12s; }
+  #lowres { display:none; }
+  .thumbs { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .thumbs img { width:56px; height:56px; object-fit:cover; border-radius:8px; }
   input[type=file] { display:none; }
+  .center { text-align:center; }
+  .big { font-size:44px; }
+  .spacer { height:12px; }
+  .err { color:var(--bad); min-height:22px; text-align:center; margin-top:10px; }
 </style>
 </head>
 <body>
-<header>
-  <h1>RR Check-In · camera test v3</h1>
-  <div class="sub">Prototype only — photos go to a test folder in Drive, not to any car or trip.</div>
-</header>
 
-<div class="card">
-  <h2>1 · Live camera (main method)</h2>
-  <p>Opens the camera inside this page. Tap the white button for each photo — the first one is the odometer. Photos upload while you keep shooting.</p>
-  <button id="startCam">Open live camera</button>
-  <div id="camStatus" class="status muted">Not tested yet</div>
+<!-- PIN -->
+<div class="screen" id="s-pin">
+  <div class="center" style="margin-top:40px">
+    <h1>RR Check-In</h1>
+    <div class="sub">Enter your PIN</div>
+  </div>
+  <div class="dots" id="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+  <div class="keys" id="keys"></div>
+  <div class="err" id="pinErr"></div>
 </div>
 
-<div class="card">
-  <h2>2 · Backup camera (one shot at a time)</h2>
-  <p>Opens the regular iPhone camera for a single photo — for dark lots or if the live camera fails.</p>
-  <label class="btn secondary" for="nativeInput">Take one photo</label>
-  <input id="nativeInput" type="file" accept="image/*" capture="environment">
-  <div id="nativeStatus" class="status muted">Not tested yet</div>
+<!-- HOME -->
+<div class="screen" id="s-home">
+  <div class="row">
+    <div class="grow"><h1 id="hello">Hi</h1><div class="sub" id="homeSub"></div></div>
+    <button class="small secondary" id="logoutBtn">Sign out</button>
+  </div>
+  <div id="pendingBanner"></div>
+  <div class="spacer"></div>
+  <button id="newBtn">Start a check-in</button>
+  <h2>Today</h2>
+  <div id="todayList"><div class="sub">Loading…</div></div>
+  <h2>Tomorrow</h2>
+  <div id="tomorrowList"></div>
+  <div class="spacer"></div>
+  <div class="sub center" id="lastSync"></div>
 </div>
 
-<div class="card">
-  <h2>3 · Phone location</h2>
-  <p>Records where the car was parked when the check-in finishes.</p>
-  <button id="locBtn" class="secondary">Get my location</button>
-  <div id="locStatus" class="status muted">Not tested yet</div>
+<!-- CAR PICKER -->
+<div class="screen" id="s-car">
+  <div class="row"><button class="small secondary" data-back="s-home">‹ Back</button><div class="grow"></div></div>
+  <h1>Which car?</h1>
+  <div class="sub">Type part of the plate</div>
+  <div class="spacer"></div>
+  <input class="search" id="carSearch" placeholder="e.g. 62R" autocomplete="off" autocapitalize="characters" spellcheck="false">
+  <div id="carList"></div>
 </div>
 
-<div class="card">
-  <h2>Photos uploaded to Drive</h2>
-  <div id="upStatus" class="status muted">None yet</div>
-  <div id="thumbs" class="thumbs"></div>
+<!-- TYPE + CONFIRM -->
+<div class="screen" id="s-type">
+  <div class="row"><button class="small secondary" id="typeBack">‹ Back</button><div class="grow"></div></div>
+  <div class="card">
+    <div class="plate" id="cPlate"></div>
+    <div class="sub" id="cLabel"></div>
+  </div>
+  <h2>Check-in type</h2>
+  <div class="types" id="types">
+    <button data-type="Pre-trip">Pre-trip<small>Before the guest picks it up</small></button>
+    <button data-type="Post-trip">Post-trip<small>After the guest returns it</small></button>
+    <button data-type="Refresh">Refresh<small>Car sat a while — fresh photos before the next trip</small></button>
+  </div>
+  <div class="spacer"></div>
+  <button id="openCamBtn" disabled>Open camera</button>
+  <div class="err" id="startErr"></div>
 </div>
 
-<div class="card">
-  <h2>Results</h2>
-  <table id="results"></table>
-  <div style="height:10px"></div>
-  <button id="sendReport">Save results to Drive</button>
-  <div id="reportStatus" class="status muted"></div>
+<!-- FINISH -->
+<div class="screen" id="s-finish">
+  <h1>Finish check-in</h1>
+  <div class="card"><div class="plate" id="fPlate"></div><div class="sub" id="fInfo"></div><div class="thumbs" id="fThumbs"></div></div>
+  <button class="secondary" id="moreBtn">‹ Take more photos</button>
+  <div id="dmgBox" style="display:none">
+    <h2>Damage notes</h2>
+    <textarea id="dmgNote" placeholder="What and where (e.g. scratch, rear bumper, left side)"></textarea>
+  </div>
+  <h2>Where did you park?</h2>
+  <input class="text" id="parkedAt" placeholder="Level / row / spot (optional)" autocomplete="off">
+  <div class="sub" id="gpsStatus" style="margin-top:6px"></div>
+  <div class="spacer"></div>
+  <button id="finishBtn">Finish check-in</button>
+  <div class="err" id="finishErr"></div>
 </div>
 
+<!-- DONE -->
+<div class="screen" id="s-done">
+  <div class="center" style="margin-top:40px">
+    <div class="big ok">✓</div>
+    <h1 id="doneTitle">Check-in saved</h1>
+    <div class="sub" id="doneSub"></div>
+  </div>
+  <div id="doneBanner"></div>
+  <div class="spacer"></div>
+  <button id="homeBtn">Back to jobs</button>
+</div>
+
+<!-- CAMERA -->
 <div id="cam">
   <video id="video" playsinline autoplay muted></video>
-  <div id="camTop"><span id="shotLabel">Odometer</span><span id="upCount">0 / 0 uploaded</span></div>
+  <div id="camFrame"></div>
+  <div id="camTop">
+    <div><div class="pill" id="shotLabel">Odometer</div><div class="pill warn" id="lowres" style="margin-top:6px">Low camera quality</div></div>
+    <div class="pill" id="upCount">0 / 0 uploaded</div>
+  </div>
   <div id="camBottom">
-    <button id="camFlip">Flip</button>
+    <button id="dmgBtn">Damage</button>
     <button id="shutter" aria-label="Take photo"></button>
     <button id="camDone">Done</button>
   </div>
 </div>
 <div id="flash"></div>
+<input id="nativeInput" type="file" accept="image/*" capture="environment">
 
 <script>
 (function () {
-  var MAX_EDGE = 1280, QUALITY = 0.72, ODO_EDGE = 1600, ODO_QUALITY = 0.85, PARALLEL = 4;
+  'use strict';
+  var VERSION = '1.0.0';
   var ENDPOINT = 'https://script.google.com/macros/s/AKfycbwRc30pniHOAfDf9Q8e7azzdOX_lV1fcSaNKv4_FEeWJBG-yNTN56JH-Xz95qsQpl1e/exec';
-  var hasBackend = true;
-  function post(body) {
-    return fetch(ENDPOINT, { method: 'POST', body: JSON.stringify(body), redirect: 'follow' })
-      .then(function (r) { return r.json(); })
-      .then(function (j) { if (!j.ok) throw new Error(j.error || 'Upload failed'); return j.result; });
-  }
+  var MAX_EDGE = 1280, QUALITY = 0.72, ODO_EDGE = 1600, ODO_QUALITY = 0.85, PARALLEL = 4;
   var $ = function (id) { return document.getElementById(id); };
-  // Stop iOS Safari from zooming on fast repeated taps or pinches.
+
+  // ---------- no zoom on fast taps / pinch (iOS Safari) ----------
   ['gesturestart', 'gesturechange', 'gestureend', 'dblclick'].forEach(function (t) {
     document.addEventListener(t, function (e) { e.preventDefault(); }, { passive: false });
   });
   var lastTouchEnd = 0;
   document.addEventListener('touchend', function (e) {
     var now = Date.now();
-    if (now - lastTouchEnd < 350 && e.target && e.target.id === 'shutter') { e.preventDefault(); e.target.click(); }
+    var t = e.target && e.target.closest && e.target.closest('button, label, .tap');
+    if (t && now - lastTouchEnd < 350) { e.preventDefault(); t.click(); }
     lastTouchEnd = now;
   }, { passive: false });
 
-  var results = {
-    liveCamera: 'not tested', nativeCamera: 'not tested', location: 'not tested', upload: hasBackend ? 'not tested' : 'no backend',
-    photosTaken: 0, photosUploaded: 0, avgPhotoKB: null, userAgent: navigator.userAgent, testedAt: new Date().toString()
+  // ---------- small helpers ----------
+  function store(k, v) { try { if (v === undefined) return JSON.parse(localStorage.getItem(k)); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, JSON.stringify(v)); } catch (e) { return null; } }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function norm(p) { return String(p || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+  function show(id) {
+    document.querySelectorAll('.screen').forEach(function (s) { s.classList.toggle('on', s.id === id); });
+    window.scrollTo(0, 0);
+    if (id === 's-home') loadJobs();
+  }
+  document.querySelectorAll('[data-back]').forEach(function (b) { b.onclick = function () { show(b.getAttribute('data-back')); }; });
+
+  var session = store('rr_session') || null;   // {token, name, role}
+
+  function api(op, data) {
+    var body = Object.assign({ op: op, token: session && session.token }, data || {});
+    return fetch(ENDPOINT, { method: 'POST', body: JSON.stringify(body), redirect: 'follow' })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        checkVersion(j.pageVersion);
+        if (!j.ok) {
+          if (j.error === 'SIGNED_OUT') { signOut(); }
+          var err = new Error(j.error || 'Something went wrong'); err.server = true; throw err;
+        }
+        return j.result;
+      });
+  }
+  function checkVersion(v) {
+    if (!v || v === VERSION) return;
+    var tried = null; try { tried = sessionStorage.getItem('rr_reload'); } catch (e) {}
+    if (tried === v || pendingCount() > 0) return;          // don't reload mid-upload or loop
+    try { sessionStorage.setItem('rr_reload', v); } catch (e) {}
+    location.replace(location.pathname + '?v=' + encodeURIComponent(v));
+  }
+
+  // ---------- PIN ----------
+  var pin = '';
+  (function buildKeys() {
+    var k = $('keys');
+    ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫'].forEach(function (d) {
+      var b = document.createElement('button');
+      b.textContent = d;
+      if (!d) { b.style.visibility = 'hidden'; }
+      b.onclick = function () {
+        $('pinErr').textContent = '';
+        if (d === '⌫') pin = pin.slice(0, -1); else if (pin.length < 4) pin += d;
+        drawDots();
+        if (pin.length === 4) doLogin();
+      };
+      k.appendChild(b);
+    });
+  })();
+  function drawDots() { Array.prototype.forEach.call($('dots').children, function (el, i) { el.classList.toggle('on', i < pin.length); }); }
+  function doLogin() {
+    var p = pin;
+    api('login', { pin: p }).then(function (r) {
+      session = r; store('rr_session', r); pin = ''; drawDots(); enterHome();
+    }).catch(function (e) {
+      pin = ''; drawDots(); $('pinErr').textContent = e.server ? e.message : 'No connection — try again';
+    });
+  }
+  function signOut() { session = null; store('rr_session', null); pin = ''; drawDots(); show('s-pin'); }
+  $('logoutBtn').onclick = signOut;
+
+  // ---------- HOME / JOBS ----------
+  var jobsCache = store('rr_jobs') || null, jobsTimer = null;
+  function enterHome() {
+    $('hello').textContent = 'Hi ' + session.name;
+    $('homeSub').textContent = session.role === 'owner' ? 'Owner — all jobs' : 'Your jobs';
+    show('s-home');
+    loadVehicles();
+  }
+  function loadJobs() {
+    if (!session) return;
+    if (jobsCache) renderJobs(jobsCache);
+    api('jobs').then(function (r) { jobsCache = r; store('rr_jobs', r); renderJobs(r); $('lastSync').textContent = 'Updated ' + new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); })
+      .catch(function () { $('lastSync').textContent = 'Offline — showing last saved jobs'; });
+    clearTimeout(jobsTimer);
+    jobsTimer = setTimeout(function () { if ($('s-home').classList.contains('on')) loadJobs(); }, 60000);
+  }
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && session && $('s-home').classList.contains('on')) loadJobs(); pump(); });
+
+  function minutesOf(t) {
+    var m = /^(\d{1,2})(?::(\d{2}))?\s*([ap]m)?$/i.exec(String(t || '').trim());
+    if (!m) return null;
+    var h = +m[1] % 12, min = +(m[2] || 0);
+    if (m[3]) { if (m[3].toLowerCase() === 'pm') h += 12; } else h = +m[1];
+    return h * 60 + min;
+  }
+  function navLink(text) {
+    if (!text) return '';
+    var url = /^https?:/i.test(text) ? text : 'https://maps.apple.com/?q=' + encodeURIComponent(text);
+    return ' <a class="nav" href="' + esc(url) + '" target="_blank" rel="noopener">Navigate ›</a>';
+  }
+  function placeText(t) { return /^https?:/i.test(t) ? 'Last check-in location' : t; }
+  function ago(stamp) {
+    if (!stamp) return '';
+    var d = new Date(stamp.replace(' ', 'T')), mins = Math.round((Date.now() - d.getTime()) / 60000);
+    if (isNaN(mins)) return '';
+    if (mins < 60) return mins + ' min ago';
+    if (mins < 2880) return Math.round(mins / 60) + ' h ago';
+    return Math.round(mins / 1440) + ' days ago';
+  }
+  function renderJobs(r) {
+    var seen = store('rr_seen') || {}, nowMin = new Date().getHours() * 60 + new Date().getMinutes();
+    var lists = { today: [], tomorrow: [] };
+    (r.jobs || []).forEach(function (j) { lists[j.day === 'tomorrow' ? 'tomorrow' : 'today'].push(j); });
+    lists.today.sort(function (a, b) { return (a.status === 'done') - (b.status === 'done'); });
+    ['today', 'tomorrow'].forEach(function (day) {
+      var el = $(day + 'List');
+      if (!lists[day].length) { el.innerHTML = '<div class="sub">No jobs</div>'; return; }
+      el.innerHTML = '';
+      lists[day].forEach(function (j) {
+        var done = j.status === 'done', cancelled = j.status === 'cancelled';
+        var carry = day === 'today' && j.dueDate < r.today;
+        var due = minutesOf(j.dueTime);
+        var overdue = day === 'today' && !done && !cancelled && (carry || (due != null && due < nowMin));
+        var changed = seen[j.id] && seen[j.id] !== j.updated && !done;
+        var tags = '';
+        if (cancelled) tags += '<span class="tag bad">Cancelled</span>';
+        else if (done) tags += '<span class="tag ok">Done ✓</span>';
+        else if (overdue) tags += '<span class="tag bad">' + (carry ? 'From ' + esc(j.dueDate.slice(5)) : 'Late') + '</span>';
+        if (changed && !cancelled) tags += '<span class="tag warn">Updated</span>';
+        var c = document.createElement('div');
+        c.className = 'card job' + (done || cancelled ? ' done' : '') + (overdue ? ' overdue' : '') + (day === 'today' && !done && !cancelled ? ' tap' : '');
+        c.innerHTML =
+          '<div class="row"><div class="grow"><span class="plate">' + esc(j.plate) + '</span>' + tags + '</div>' +
+          '<div class="muted">' + esc(j.dueTime || '') + '</div></div>' +
+          '<div class="sub">' + esc(j.label) + '</div>' +
+          '<div class="kv"><b>' + esc(j.type || 'Job') + '</b>' + (j.assignee ? ' · ' + esc(j.assignee) : '') + '</div>' +
+          (j.carAt ? '<div class="kv"><b>Car is at:</b> ' + esc(placeText(j.carAt)) + (j.parking ? ' · ' + esc(j.parking) : '') +
+            (j.locationAt ? ' <span class="muted">(' + esc(ago(j.locationAt)) + ')</span>' : '') + navLink(j.carAt) + '</div>' : '') +
+          (j.takeTo && j.takeTo !== j.carAt ? '<div class="kv"><b>Take it to:</b> ' + esc(j.takeTo) + navLink(j.takeTo) + '</div>' : '') +
+          (j.keyNote ? '<div class="kv"><b>Key:</b> ' + esc(j.keyNote) + '</div>' : '') +
+          (j.notes ? '<div class="kv"><b>Notes:</b> ' + esc(j.notes) + '</div>' : '');
+        if (day === 'today' && !done && !cancelled) {
+          c.onclick = function (ev) { if (ev.target.closest('a')) return; startFromJob(j); };
+        }
+        el.appendChild(c);
+        seen[j.id] = seen[j.id] || j.updated;
+      });
+    });
+    store('rr_seen', seen);
+  }
+
+  // ---------- CARS ----------
+  var vehicles = store('rr_vehicles') || [];
+  function loadVehicles() { api('vehicles').then(function (v) { vehicles = v; store('rr_vehicles', v); renderCars(); }).catch(function () {}); }
+  function renderCars() {
+    var q = norm($('carSearch').value), el = $('carList');
+    el.innerHTML = '';
+    vehicles.forEach(function (v) {
+      var hitOld = '', match = !q || norm(v.plate).indexOf(q) >= 0;
+      if (!match && q) {
+        (v.oldPlates || []).concat(v.pendingPlate ? [v.pendingPlate] : []).forEach(function (p) { if (norm(p).indexOf(q) >= 0) { match = true; hitOld = p; } });
+      }
+      if (!match) return;
+      var c = document.createElement('div');
+      c.className = 'card tap';
+      c.innerHTML = '<span class="plate">' + esc(v.plate) + '</span>' +
+        (hitOld ? '<span class="tag">' + (hitOld === v.pendingPlate ? 'new plate ' : 'was ') + esc(hitOld) + '</span>' : '') +
+        (v.onHold ? '<span class="tag warn">On hold</span>' : '') +
+        '<div class="sub">' + esc(v.label) + '</div>';
+      c.onclick = function () { pickCar(v, null); };
+      el.appendChild(c);
+    });
+    if (!el.children.length) el.innerHTML = '<div class="sub" style="margin-top:12px">No car matches “' + esc($('carSearch').value) + '”</div>';
+  }
+  $('carSearch').oninput = renderCars;
+  $('newBtn').onclick = function () { $('carSearch').value = ''; renderCars(); show('s-car'); loadVehicles(); };
+
+  // ---------- TYPE / CONFIRM ----------
+  var pick = null;   // {vehicle, type, assignmentId}
+  function pickCar(v, job) {
+    pick = { vehicleId: v.id, plate: v.plate, label: v.label, type: job ? job.type : null, assignmentId: job ? job.id : '' };
+    $('cPlate').textContent = v.plate; $('cLabel').textContent = v.label;
+    Array.prototype.forEach.call($('types').children, function (b) { b.classList.toggle('sel', b.getAttribute('data-type') === pick.type); });
+    $('openCamBtn').disabled = !pick.type; $('startErr').textContent = '';
+    show('s-type');
+  }
+  function startFromJob(j) {
+    var v = vehicles.filter(function (x) { return x.id === j.vehicleId; })[0] || { id: j.vehicleId, plate: j.plate, label: j.label };
+    var job = Object.assign({}, j);
+    if (['Pre-trip', 'Post-trip', 'Refresh'].indexOf(job.type) < 0) job.type = null;
+    pickCar(v, job);
+  }
+  $('typeBack').onclick = function () { show(pick && pick.assignmentId ? 's-home' : 's-car'); };
+  Array.prototype.forEach.call($('types').children, function (b) {
+    b.onclick = function () {
+      pick.type = b.getAttribute('data-type');
+      Array.prototype.forEach.call($('types').children, function (x) { x.classList.toggle('sel', x === b); });
+      $('openCamBtn').disabled = false;
+    };
+  });
+  $('openCamBtn').onclick = function () {
+    var btn = $('openCamBtn'); btn.disabled = true; btn.textContent = 'Starting…'; $('startErr').textContent = '';
+    api('start', { vehicleId: pick.vehicleId, type: pick.type, assignmentId: pick.assignmentId }).then(function (r) {
+      current = { checkinId: r.checkinId, plate: r.plate, label: r.label, type: r.type, walk: 0, dmg: 0, odo: false, thumbs: [] };
+      store('rr_current', current);
+      btn.textContent = 'Open camera'; btn.disabled = false;
+      openCamera();
+    }).catch(function (e) {
+      btn.textContent = 'Open camera'; btn.disabled = false;
+      $('startErr').textContent = e.server ? e.message : 'No connection — move to better signal and try again';
+    });
   };
-  var shots = [], queue = [], stream = null, facing = 'environment', sizes = [];
 
-  function setStatus(el, text, cls) { el.textContent = text; el.className = 'status ' + (cls || 'muted'); }
-  function renderResults() {
-    var rows = [
-      ['Live camera in page', results.liveCamera],
-      ['Backup iPhone camera', results.nativeCamera],
-      ['Phone location', results.location],
-      ['Upload to Drive', results.upload],
-      ['Photos taken / uploaded', results.photosTaken + ' / ' + results.photosUploaded],
-      ['Average photo size', results.avgPhotoKB ? results.avgPhotoKB + ' KB' : '—'],
-      ['Upload speed', results.secondsPerPhoto ? results.secondsPerPhoto + ' s per photo' : '—']
-    ];
-    $('results').innerHTML = rows.map(function (r) {
-      var v = String(r[1]), cls = /^works|^ok/i.test(v) ? 'ok' : /fail|blocked|denied|error|no backend/i.test(v) ? 'bad' : 'muted';
-      return '<tr><td>' + r[0] + '</td><td class="' + cls + '">' + v + '</td></tr>';
-    }).join('');
+  // ---------- CAMERA ----------
+  var current = null, stream = null, damageMode = false;
+  function shotLabel() {
+    if (!current.odo) return 'Odometer — dash lit, digits readable';
+    if (damageMode) return 'Damage · photo ' + (current.dmg + 1);
+    return 'Walkaround · photo ' + (current.walk + 1);
   }
-  renderResults();
-
-  // ---- image helpers ----
-  function canvasFromSource(src, w, h) {
-    var odo = shots.length === 0, edge = odo ? ODO_EDGE : MAX_EDGE, q = odo ? ODO_QUALITY : QUALITY;
-    var scale = Math.min(1, edge / Math.max(w, h));
-    var c = document.createElement('canvas');
-    c.width = Math.round(w * scale); c.height = Math.round(h * scale);
-    c.getContext('2d').drawImage(src, 0, 0, c.width, c.height);
-    return c.toDataURL('image/jpeg', q);
-  }
-  function addShot(dataUrl, source) {
-    var n = shots.length, isOdo = n === 0;
-    var shot = { n: n, name: (isOdo ? 'ODO' : String(n).padStart(2, '0')) + '_' + Date.now() + '.jpg', dataUrl: dataUrl, source: source, state: 'queued', tries: 0 };
-    shots.push(shot); results.photosTaken = shots.length;
-    sizes.push(Math.round(dataUrl.length * 0.75 / 1024));
-    results.avgPhotoKB = Math.round(sizes.reduce(function (a, b) { return a + b; }, 0) / sizes.length);
-    var t = document.createElement('div'); t.className = 'thumb' + (isOdo ? ' odo' : '');
-    t.innerHTML = '<img src="' + dataUrl + '"><span id="t' + n + '">…</span>';
-    $('thumbs').appendChild(t);
-    $('shotLabel').textContent = 'Walkaround · photo ' + shots.length;
-    queue.push(shot); pump(); updateCounts(); renderResults();
-  }
-  function updateCounts() {
-    var done = shots.filter(function (s) { return s.state === 'done'; }).length;
-    results.photosUploaded = done;
-    $('upCount').textContent = done + ' / ' + shots.length + ' uploaded';
-    var left = shots.length - done;
-    setStatus($('upStatus'), done + ' of ' + shots.length + ' uploaded' + (left ? ' · ' + left + ' still uploading — keep this page open' : ''), done === shots.length && done ? 'ok' : (left ? 'warn' : 'muted'));
-  }
-
-  // ---- background upload: up to PARALLEL at once, with retry ----
-  var active = 0, t0 = null;
-  function pump() {
-    while (active < PARALLEL && queue.length) startUpload(queue.shift());
-    updateCounts();
-  }
-  function startUpload(shot) {
-    active++; shot.tries++; shot.state = 'uploading';
-    if (!t0) t0 = Date.now();
-    post({ op: 'photo', dataUrl: shot.dataUrl, name: shot.name, meta: { source: shot.source, n: shot.n, takenAt: new Date().toISOString() } })
-      .then(function () {
-        active--; shot.state = 'done';
-        var el = $('t' + shot.n); if (el) el.textContent = '✓';
-        results.upload = 'works';
-        var done = shots.filter(function (s) { return s.state === 'done'; }).length;
-        results.secondsPerPhoto = Math.round((Date.now() - t0) / done / 100) / 10;
-        renderResults(); pump();
-      })
-      .catch(function (err) {
-        active--;
-        if (shot.tries < 4) { shot.state = 'queued'; setTimeout(function () { queue.push(shot); pump(); }, 1500 * shot.tries); }
-        else { shot.state = 'failed'; var el = $('t' + shot.n); if (el) el.textContent = '✕'; results.upload = 'failed: ' + (err && err.message || err); renderResults(); }
-        pump();
-      });
-  }
-  function pending() { return shots.filter(function (s) { return s.state !== 'done' && s.state !== 'failed'; }).length; }
-  window.addEventListener('beforeunload', function (e) { if (pending()) { e.preventDefault(); e.returnValue = ''; } });
-
-  // ---- 1. live camera ----
   function openCamera() {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      results.liveCamera = 'blocked — camera not available to this page';
-      setStatus($('camStatus'), 'Live camera is not available here. Try the backup camera below.', 'bad'); renderResults(); return;
-    }
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: facing }, width: { ideal: 1920 }, height: { ideal: 1440 } }, audio: false })
-      .then(function (s) {
-        stream = s; var v = $('video'); v.srcObject = s;
-        $('cam').classList.add('on');
-        $('shotLabel').textContent = shots.length ? 'Walkaround · photo ' + (shots.length + 1) : 'Odometer';
-        return v.play();
-      })
-      .then(function () {
-        results.liveCamera = 'works'; setStatus($('camStatus'), 'Live camera works ✓', 'ok'); renderResults();
-      })
-      .catch(function (e) {
-        results.liveCamera = 'failed: ' + (e && (e.name + ' ' + e.message) || e);
-        setStatus($('camStatus'), 'Live camera failed (' + (e && e.name || 'error') + '). Try the backup camera below.', 'bad');
-        closeCamera(); renderResults();
+    damageMode = false; $('cam').classList.remove('damage'); $('dmgBtn').classList.remove('on');
+    $('shotLabel').textContent = shotLabel(); updateCounter();
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { useNative(); return; }
+    var want = { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1440 } }, audio: false };
+    navigator.mediaDevices.getUserMedia(want).then(function (s) {
+      stream = s; var v = $('video'); v.srcObject = s; $('cam').classList.add('on');
+      return v.play().then(function () {
+        setTimeout(function () { $('lowres').style.display = v.videoWidth && Math.max(v.videoWidth, v.videoHeight) < 1280 ? 'block' : 'none'; }, 800);
       });
+    }).catch(function () { closeCamera(); useNative(); });
   }
-  function closeCamera() {
-    if (stream) stream.getTracks().forEach(function (t) { t.stop(); });
-    stream = null; $('cam').classList.remove('on');
+  function useNative() {
+    $('startErr').textContent = 'The in-page camera isn’t available — using the iPhone camera, one photo at a time.';
+    $('nativeInput').click();
   }
-  $('startCam').onclick = openCamera;
-  $('camDone').onclick = closeCamera;
-  $('camFlip').onclick = function () { facing = facing === 'environment' ? 'user' : 'environment'; closeCamera(); openCamera(); };
+  function closeCamera() { if (stream) stream.getTracks().forEach(function (t) { t.stop(); }); stream = null; $('cam').classList.remove('on'); }
+  $('dmgBtn').onclick = function () {
+    if (!current.odo) return;                       // odometer first
+    damageMode = !damageMode;
+    $('cam').classList.toggle('damage', damageMode); $('dmgBtn').classList.toggle('on', damageMode);
+    $('dmgBtn').textContent = damageMode ? 'Damage ON' : 'Damage';
+    $('shotLabel').textContent = shotLabel();
+  };
+  $('camDone').onclick = function () { closeCamera(); toFinish(); };
   $('shutter').onclick = function () {
     var v = $('video'); if (!v.videoWidth) return;
-    $('flash').style.opacity = .7; setTimeout(function () { $('flash').style.opacity = 0; }, 90);
-    addShot(canvasFromSource(v, v.videoWidth, v.videoHeight), 'live');
+    $('flash').style.opacity = .7; setTimeout(function () { $('flash').style.opacity = 0; }, 80);
+    addShot(toJpeg(v, v.videoWidth, v.videoHeight, !current.odo));
   };
-
-  // ---- 2. backup native camera ----
   $('nativeInput').onchange = function (ev) {
-    var f = ev.target.files && ev.target.files[0]; if (!f) return;
+    var f = ev.target.files && ev.target.files[0]; if (!f || !current) return;
     var img = new Image(), url = URL.createObjectURL(f);
-    img.onload = function () {
-      addShot(canvasFromSource(img, img.naturalWidth, img.naturalHeight), 'native');
-      URL.revokeObjectURL(url);
-      results.nativeCamera = 'works'; setStatus($('nativeStatus'), 'Backup camera works ✓', 'ok'); renderResults();
-    };
-    img.onerror = function () { results.nativeCamera = 'failed: could not read photo'; setStatus($('nativeStatus'), 'Could not read that photo', 'bad'); renderResults(); };
+    img.onload = function () { addShot(toJpeg(img, img.naturalWidth, img.naturalHeight, !current.odo)); URL.revokeObjectURL(url); if (!stream) toFinish(); };
     img.src = url; ev.target.value = '';
   };
+  function toJpeg(src, w, h, isOdo) {
+    var edge = isOdo ? ODO_EDGE : MAX_EDGE, scale = Math.min(1, edge / Math.max(w, h));
+    var c = document.createElement('canvas'); c.width = Math.round(w * scale); c.height = Math.round(h * scale);
+    c.getContext('2d').drawImage(src, 0, 0, c.width, c.height);
+    var t = document.createElement('canvas'), side = Math.min(c.width, c.height);
+    t.width = t.height = 112;
+    t.getContext('2d').drawImage(c, (c.width - side) / 2, (c.height - side) / 2, side, side, 0, 0, 112, 112);
+    return { dataUrl: c.toDataURL('image/jpeg', isOdo ? ODO_QUALITY : QUALITY), thumb: t.toDataURL('image/jpeg', 0.6) };
+  }
+  function addShot(shot) {
+    var dataUrl = shot.dataUrl;
+    var kind, n;
+    if (!current.odo) { kind = 'odo'; n = 0; current.odo = true; }
+    else if (damageMode) { kind = 'damage'; n = ++current.dmg; }
+    else { kind = 'walk'; n = ++current.walk; }
+    if (current.thumbs.length < 12) current.thumbs.push(shot.thumb);
+    store('rr_current', current);
+    enqueue({ op: 'photo', checkinId: current.checkinId, n: n, kind: kind, dataUrl: dataUrl, takenAt: new Date().toISOString() });
+    $('shotLabel').textContent = shotLabel();
+  }
+  function updateCounter() {
+    if (!current) return;
+    var st = stats[current.checkinId] || { total: 0, done: 0 };
+    $('upCount').textContent = st.done + ' / ' + st.total + ' uploaded';
+  }
 
-  // ---- 3. location ----
-  $('locBtn').onclick = function () {
-    if (!navigator.geolocation) { results.location = 'blocked — not available to this page'; setStatus($('locStatus'), 'Location not available here', 'bad'); renderResults(); return; }
-    setStatus($('locStatus'), 'Asking for location…', 'muted');
-    navigator.geolocation.getCurrentPosition(function (p) {
-      var lat = p.coords.latitude.toFixed(5), lng = p.coords.longitude.toFixed(5), acc = Math.round(p.coords.accuracy);
-      results.location = 'works (±' + acc + ' m)'; results.coords = { lat: +lat, lng: +lng, accuracyM: acc };
-      $('locStatus').innerHTML = '<span class="ok">Location works ✓</span> ' + lat + ', ' + lng + ' (±' + acc + ' m) · ' +
-        '<a style="color:var(--accent)" href="https://maps.google.com/?q=' + lat + ',' + lng + '">open in Maps</a>';
-      renderResults();
-    }, function (e) {
-      results.location = 'failed: ' + (e && e.message || e.code);
-      setStatus($('locStatus'), 'Location failed (' + (e && e.message || e.code) + ')', 'bad'); renderResults();
-    }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+  // ---------- FINISH ----------
+  var gps = null;
+  function toFinish() {
+    if (!current) { show('s-home'); return; }
+    var total = (current.odo ? 1 : 0) + current.walk + current.dmg;
+    $('fPlate').textContent = current.plate;
+    $('fInfo').textContent = current.type + ' · ' + total + ' photo' + (total === 1 ? '' : 's') + (current.dmg ? ' (' + current.dmg + ' damage)' : '');
+    $('fThumbs').innerHTML = current.thumbs.filter(String).map(function (t) { return '<img src="' + t + '">'; }).join('');
+    $('dmgBox').style.display = current.dmg ? 'block' : 'none';
+    $('finishErr').textContent = '';
+    show('s-finish');
+    gps = null; $('gpsStatus').textContent = 'Getting location…';
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(function (p) {
+        gps = { lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.round(p.coords.accuracy) };
+        $('gpsStatus').textContent = 'Location saved (±' + gps.acc + ' m)';
+      }, function () { $('gpsStatus').textContent = 'Location not available — type where you parked'; }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 });
+    } else $('gpsStatus').textContent = '';
+  }
+  $('moreBtn').onclick = function () { openCamera(); };
+  $('finishBtn').onclick = function () {
+    if (!current.odo) { $('finishErr').textContent = 'Take the odometer photo first'; return; }
+    var total = 1 + current.walk + current.dmg;
+    enqueue({ op: 'finish', checkinId: current.checkinId, photos: total, odo: true, damage: current.dmg > 0,
+      damageNote: $('dmgNote').value.trim(), parkedAt: $('parkedAt').value.trim(),
+      lat: gps && gps.lat, lng: gps && gps.lng, acc: gps && gps.acc });
+    $('doneTitle').textContent = current.plate + ' · ' + current.type;
+    $('doneSub').textContent = total + ' photo' + (total === 1 ? '' : 's') + ' saved';
+    lastDone = current.checkinId;
+    current = null; store('rr_current', null);
+    $('dmgNote').value = ''; $('parkedAt').value = '';
+    show('s-done'); renderPending();
   };
+  var lastDone = null;
+  $('homeBtn').onclick = function () { show('s-home'); };
 
-  // ---- results ----
-  $('sendReport').onclick = function () {
-    if (!hasBackend) { setStatus($('reportStatus'), 'No backend.', 'bad'); return; }
-    results.testedAt = new Date().toString(); results.stillUploading = pending();
-    setStatus($('reportStatus'), 'Saving…', 'muted');
-    post({ op: 'report', report: results })
-      .then(function (name) { setStatus($('reportStatus'), 'Saved to Drive as ' + name + ' ✓', 'ok'); })
-      .catch(function (e) { setStatus($('reportStatus'), 'Could not save: ' + (e && e.message || e), 'bad'); });
-  };
+  // ---------- UPLOAD QUEUE (saved on the phone until it reaches Drive) ----------
+  var db = null, queue = [], active = 0, stats = {}, memOnly = false;
+  function openDb() {
+    return new Promise(function (res) {
+      try {
+        var r = indexedDB.open('rr-checkin', 1);
+        r.onupgradeneeded = function () { r.result.createObjectStore('q', { keyPath: 'k' }); };
+        r.onsuccess = function () { db = r.result; res(); };
+        r.onerror = function () { memOnly = true; res(); };
+      } catch (e) { memOnly = true; res(); }
+    });
+  }
+  function dbPut(item) { if (memOnly || !db) return; try { db.transaction('q', 'readwrite').objectStore('q').put(item); } catch (e) {} }
+  function dbDel(k) { if (memOnly || !db) return; try { db.transaction('q', 'readwrite').objectStore('q').delete(k); } catch (e) {} }
+  function dbAll() {
+    return new Promise(function (res) {
+      if (memOnly || !db) return res([]);
+      try { var r = db.transaction('q').objectStore('q').getAll(); r.onsuccess = function () { res(r.result || []); }; r.onerror = function () { res([]); }; } catch (e) { res([]); }
+    });
+  }
+  var seq = 0;
+  function enqueue(item) {
+    item.k = Date.now() + '-' + (seq++) + '-' + Math.random().toString(36).slice(2, 6);
+    item.tries = 0; item.next = 0;
+    queue.push(item); dbPut(item);
+    if (item.op === 'photo') { var s = stats[item.checkinId] = stats[item.checkinId] || { total: 0, done: 0 }; s.total++; }
+    updateCounter(); pump();
+  }
+  function pendingCount() { return queue.filter(function (q) { return q.op === 'photo'; }).length; }
+  function pump() {
+    if (!session) return;
+    var now = Date.now();
+    queue.forEach(function (item) {
+      if (active >= PARALLEL || item.busy || item.next > now) return;
+      if (item.op === 'finish' && queue.some(function (q) { return q.op === 'photo' && q.checkinId === item.checkinId; })) return;
+      send(item);
+    });
+    renderPending();
+  }
+  function send(item) {
+    item.busy = true; active++;
+    var data = Object.assign({}, item); delete data.k; delete data.tries; delete data.next; delete data.busy; delete data.op;
+    api(item.op, data).then(function () {
+      done(item);
+      if (item.op === 'photo') { var s = stats[item.checkinId]; if (s) s.done++; }
+    }).catch(function (e) {
+      item.busy = false; item.tries++;
+      var permanent = e.server && /not an image|not found|unknown request/i.test(e.message);
+      if (permanent && item.tries >= 3) { done(item); return; }
+      item.next = Date.now() + Math.min(60000, 1500 * Math.pow(2, Math.min(item.tries, 5)));
+      dbPut(Object.assign({}, item, { busy: false }));
+    }).then(function () { active = Math.max(0, active - 1); updateCounter(); pump(); });
+  }
+  function done(item) { queue = queue.filter(function (q) { return q !== item; }); dbDel(item.k); }
+  function renderPending() {
+    var n = pendingCount();
+    var html = n ? '<div class="banner">' + n + ' photo' + (n === 1 ? '' : 's') + ' still uploading — keep this page open</div>' : '';
+    $('pendingBanner').innerHTML = html;
+    $('doneBanner').innerHTML = n ? html : '<div class="banner ok">All photos uploaded ✓</div>';
+  }
+  window.addEventListener('beforeunload', function (e) { if (pendingCount()) { e.preventDefault(); e.returnValue = ''; } });
+  window.addEventListener('online', pump);
+  setInterval(pump, 5000);
+
+  // ---------- boot ----------
+  openDb().then(dbAll).then(function (items) {
+    items.forEach(function (it) {
+      it.busy = false; it.next = 0; queue.push(it);
+      if (it.op === 'photo') { var s = stats[it.checkinId] = stats[it.checkinId] || { total: 0, done: 0 }; s.total++; }
+    });
+    var saved = store('rr_current');
+    if (session) {
+      enterHome();
+      if (saved && saved.checkinId) { current = saved; toFinish(); }   // unfinished check-in: let them finish it
+    } else show('s-pin');
+    pump();
+  });
 })();
 </script>
 </body>
