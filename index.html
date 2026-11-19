@@ -164,6 +164,7 @@
     <h1 id="doneTitle">Check-in saved</h1>
     <div class="sub" id="doneSub"></div>
   </div>
+  <div id="refreshNote"></div>
   <div id="doneBanner"></div>
   <div class="spacer"></div>
   <button id="homeBtn">Back to jobs</button>
@@ -189,7 +190,7 @@
 <script>
 (function () {
   'use strict';
-  var VERSION = '1.1.0';
+  var VERSION = '1.2.0';
   var ENDPOINT = 'https://script.google.com/macros/s/AKfycbwRc30pniHOAfDf9Q8e7azzdOX_lV1fcSaNKv4_FEeWJBG-yNTN56JH-Xz95qsQpl1e/exec';
   var MAX_EDGE = 1280, QUALITY = 0.72, ODO_EDGE = 1600, ODO_QUALITY = 0.85, PARALLEL = 4;
   var $ = function (id) { return document.getElementById(id); };
@@ -426,7 +427,7 @@
   $('openCamBtn').onclick = function () {
     var btn = $('openCamBtn'); btn.disabled = true; btn.textContent = 'Starting…'; $('startErr').textContent = '';
     api('start', { vehicleId: pick.vehicleId, type: pick.type, assignmentId: pick.assignmentId }).then(function (r) {
-      current = { checkinId: r.checkinId, plate: r.plate, label: r.label, type: r.type, walk: 0, dmg: 0, odo: false, thumbs: [] };
+      current = { checkinId: r.checkinId, plate: r.plate, label: r.label, type: r.type, walk: 0, dmg: 0, odo: false, thumbs: [], refreshAfter: r.refreshAfter || '' };
       store('rr_current', current);
       btn.textContent = 'Open camera'; btn.disabled = false;
       openCamera('walk');
@@ -586,6 +587,8 @@
     $('doneTitle').textContent = current.plate + ' · ' + current.type;
     $('doneSub').textContent = total + ' photo' + (total === 1 ? '' : 's') + ' saved';
     lastDone = current.checkinId;
+    $('refreshNote').innerHTML = current.refreshAfter ?
+      '<div class="banner">Next trip is more than 24 hours away. Do a <b>Refresh</b> check-in on this car after <b>' + esc(current.refreshAfter) + '</b> so the photos count for Turo.</div>' : '';
     current = null; store('rr_current', null);
     $('dmgNote').value = ''; $('parkedAt').value = '';
     show('s-done'); renderPending();
