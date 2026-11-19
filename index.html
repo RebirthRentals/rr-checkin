@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>RR Check-In · prototype</title>
+<title>RR Check-In · prototype v2</title>
 <style>
   :root { --bg:#0f1115; --card:#1a1d24; --line:#2a2f3a; --text:#eef0f4; --muted:#9aa3b2; --ok:#3ecf8e; --bad:#ff6b6b; --warn:#f5b84b; --accent:#4c8dff; }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
@@ -45,7 +45,7 @@
 </head>
 <body>
 <header>
-  <h1>RR Check-In · camera test</h1>
+  <h1>RR Check-In · camera test v2</h1>
   <div class="sub">Prototype only — photos go to a test folder in Drive, not to any car or trip.</div>
 </header>
 
@@ -98,7 +98,7 @@
 
 <script>
 (function () {
-  var MAX_EDGE = 1600, QUALITY = 0.82;
+  var MAX_EDGE = 1280, QUALITY = 0.72, ODO_EDGE = 1600, ODO_QUALITY = 0.85, PARALLEL = 4;
   var ENDPOINT = 'https://script.google.com/macros/s/AKfycbwRc30pniHOAfDf9Q8e7azzdOX_lV1fcSaNKv4_FEeWJBG-yNTN56JH-Xz95qsQpl1e/exec';
   var hasBackend = true;
   function post(body) {
@@ -112,7 +112,7 @@
     liveCamera: 'not tested', nativeCamera: 'not tested', location: 'not tested', upload: hasBackend ? 'not tested' : 'no backend',
     photosTaken: 0, photosUploaded: 0, avgPhotoKB: null, userAgent: navigator.userAgent, testedAt: new Date().toString()
   };
-  var shots = [], queue = [], uploading = false, stream = null, facing = 'environment', sizes = [];
+  var shots = [], queue = [], stream = null, facing = 'environment', sizes = [];
 
   function setStatus(el, text, cls) { el.textContent = text; el.className = 'status ' + (cls || 'muted'); }
   function renderResults() {
@@ -122,7 +122,8 @@
       ['Phone location', results.location],
       ['Upload to Drive', results.upload],
       ['Photos taken / uploaded', results.photosTaken + ' / ' + results.photosUploaded],
-      ['Average photo size', results.avgPhotoKB ? results.avgPhotoKB + ' KB' : '—']
+      ['Average photo size', results.avgPhotoKB ? results.avgPhotoKB + ' KB' : '—'],
+      ['Upload speed', results.secondsPerPhoto ? results.secondsPerPhoto + ' s per photo' : '—']
     ];
     $('results').innerHTML = rows.map(function (r) {
       var v = String(r[1]), cls = /^works|^ok/i.test(v) ? 'ok' : /fail|blocked|denied|error|no backend/i.test(v) ? 'bad' : 'muted';
@@ -133,11 +134,12 @@
 
   // ---- image helpers ----
   function canvasFromSource(src, w, h) {
-    var scale = Math.min(1, MAX_EDGE / Math.max(w, h));
+    var odo = shots.length === 0, edge = odo ? ODO_EDGE : MAX_EDGE, q = odo ? ODO_QUALITY : QUALITY;
+    var scale = Math.min(1, edge / Math.max(w, h));
     var c = document.createElement('canvas');
     c.width = Math.round(w * scale); c.height = Math.round(h * scale);
     c.getContext('2d').drawImage(src, 0, 0, c.width, c.height);
-    return c.toDataURL('image/jpeg', QUALITY);
+    return c.toDataURL('image/jpeg', q);
   }
   function addShot(dataUrl, source) {
     var n = shots.length, isOdo = n === 0;
@@ -155,28 +157,37 @@
     var done = shots.filter(function (s) { return s.state === 'done'; }).length;
     results.photosUploaded = done;
     $('upCount').textContent = done + ' / ' + shots.length + ' uploaded';
-    setStatus($('upStatus'), done + ' of ' + shots.length + ' uploaded' + (queue.length ? ' · uploading…' : ''), done === shots.length && done ? 'ok' : 'muted');
+    var left = shots.length - done;
+    setStatus($('upStatus'), done + ' of ' + shots.length + ' uploaded' + (left ? ' · ' + left + ' still uploading — keep this page open' : ''), done === shots.length && done ? 'ok' : (left ? 'warn' : 'muted'));
   }
 
-  // ---- background upload with retry ----
+  // ---- background upload: up to PARALLEL at once, with retry ----
+  var active = 0, t0 = null;
   function pump() {
-    if (uploading || !queue.length) return;
-    if (!hasBackend) { queue.forEach(function (s) { s.state = 'skipped'; var el = $('t' + s.n); if (el) el.textContent = '–'; }); queue = []; updateCounts(); return; }
-    uploading = true;
-    var shot = queue[0]; shot.tries++;
+    while (active < PARALLEL && queue.length) startUpload(queue.shift());
+    updateCounts();
+  }
+  function startUpload(shot) {
+    active++; shot.tries++; shot.state = 'uploading';
+    if (!t0) t0 = Date.now();
     post({ op: 'photo', dataUrl: shot.dataUrl, name: shot.name, meta: { source: shot.source, n: shot.n, takenAt: new Date().toISOString() } })
       .then(function () {
-        shot.state = 'done'; queue.shift(); uploading = false;
+        active--; shot.state = 'done';
         var el = $('t' + shot.n); if (el) el.textContent = '✓';
-        results.upload = 'works'; updateCounts(); renderResults(); pump();
+        results.upload = 'works';
+        var done = shots.filter(function (s) { return s.state === 'done'; }).length;
+        results.secondsPerPhoto = Math.round((Date.now() - t0) / done / 100) / 10;
+        renderResults(); pump();
       })
       .catch(function (err) {
-        uploading = false;
-        if (shot.tries < 4) { setTimeout(pump, 1500 * shot.tries); }
-        else { shot.state = 'failed'; queue.shift(); var el = $('t' + shot.n); if (el) el.textContent = '✕'; results.upload = 'failed: ' + (err && err.message || err); renderResults(); pump(); }
-        updateCounts();
+        active--;
+        if (shot.tries < 4) { shot.state = 'queued'; setTimeout(function () { queue.push(shot); pump(); }, 1500 * shot.tries); }
+        else { shot.state = 'failed'; var el = $('t' + shot.n); if (el) el.textContent = '✕'; results.upload = 'failed: ' + (err && err.message || err); renderResults(); }
+        pump();
       });
   }
+  function pending() { return shots.filter(function (s) { return s.state !== 'done' && s.state !== 'failed'; }).length; }
+  window.addEventListener('beforeunload', function (e) { if (pending()) { e.preventDefault(); e.returnValue = ''; } });
 
   // ---- 1. live camera ----
   function openCamera() {
@@ -245,7 +256,7 @@
   // ---- results ----
   $('sendReport').onclick = function () {
     if (!hasBackend) { setStatus($('reportStatus'), 'No backend.', 'bad'); return; }
-    results.testedAt = new Date().toString();
+    results.testedAt = new Date().toString(); results.stillUploading = pending();
     setStatus($('reportStatus'), 'Saving…', 'muted');
     post({ op: 'report', report: results })
       .then(function (name) { setStatus($('reportStatus'), 'Saved to Drive as ' + name + ' ✓', 'ok'); })
