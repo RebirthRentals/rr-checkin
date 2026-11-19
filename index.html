@@ -64,6 +64,8 @@
   #shutter:active { transform:scale(.93); }
   #flash { position:fixed; inset:0; background:#fff; opacity:0; pointer-events:none; z-index:11; transition:opacity .12s; }
   #lowres { display:none; }
+  #camBack { width:auto; flex:none; padding:9px 14px; font-size:15px; background:#000a; border-radius:999px; margin-right:6px; }
+  #camTop .camLeft { display:flex; align-items:flex-start; }
   .thumbs { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
   .thumbs img { width:56px; height:56px; object-fit:cover; border-radius:8px; }
   input[type=file] { display:none; }
@@ -133,6 +135,7 @@
 
 <!-- FINISH -->
 <div class="screen" id="s-finish">
+  <div class="row"><button class="small secondary" id="finBack">‹ Back to camera</button><div class="grow"></div><button class="small secondary" id="cancelBtn">Cancel check-in</button></div>
   <h1>Finish check-in</h1>
   <div class="card"><div class="plate" id="fPlate"></div><div class="sub" id="fInfo"></div><div class="thumbs" id="fThumbs"></div></div>
   <button class="secondary" id="moreBtn">‹ Take more photos</button>
@@ -165,7 +168,7 @@
   <video id="video" playsinline autoplay muted></video>
   <div id="camFrame"></div>
   <div id="camTop">
-    <div><div class="pill" id="shotLabel">Odometer</div><div class="pill warn" id="lowres" style="margin-top:6px">Low camera quality</div></div>
+    <div class="camLeft"><button id="camBack">‹ Back</button><div><div class="pill" id="shotLabel">Odometer</div><div class="pill warn" id="lowres" style="margin-top:6px">Low camera quality</div></div></div>
     <div class="pill" id="upCount">0 / 0 uploaded</div>
   </div>
   <div id="camBottom">
@@ -449,6 +452,21 @@
     $('shotLabel').textContent = shotLabel();
   };
   $('camDone').onclick = function () { closeCamera(); toFinish(); };
+  $('camBack').onclick = function () {
+    closeCamera();
+    if (!current) { show('s-home'); return; }
+    if (!current.odo && !current.walk && !current.dmg) { dropCheckin(); show(pick ? 's-type' : 's-home'); return; }   // nothing taken yet: just go back
+    toFinish();
+  };
+  function dropCheckin() {
+    if (!current) return;
+    var id = current.checkinId;
+    queue = queue.filter(function (q) { if (q.checkinId === id && !q.busy) { dbDel(q.k); return false; } return true; });
+    delete stats[id];
+    current = null; store('rr_current', null);
+    $('dmgNote').value = ''; $('parkedAt').value = '';
+    renderPending();
+  }
   $('shutter').onclick = function () {
     var v = $('video'); if (!v.videoWidth) return;
     $('flash').style.opacity = .7; setTimeout(function () { $('flash').style.opacity = 0; }, 80);
@@ -506,6 +524,18 @@
     } else $('gpsStatus').textContent = '';
   }
   $('moreBtn').onclick = function () { openCamera(); };
+  $('finBack').onclick = function () { openCamera(); };
+  var cancelArmed = null;
+  $('cancelBtn').onclick = function () {
+    var b = $('cancelBtn');
+    if (!cancelArmed) {
+      b.textContent = 'Tap again to cancel'; b.style.background = 'var(--bad)';
+      cancelArmed = setTimeout(function () { cancelArmed = null; b.textContent = 'Cancel check-in'; b.style.background = ''; }, 3000);
+      return;
+    }
+    clearTimeout(cancelArmed); cancelArmed = null; b.textContent = 'Cancel check-in'; b.style.background = '';
+    dropCheckin(); show('s-home');
+  };
   $('finishBtn').onclick = function () {
     if (!current.odo) { $('finishErr').textContent = 'Take the odometer photo first'; return; }
     var total = 1 + current.walk + current.dmg;
