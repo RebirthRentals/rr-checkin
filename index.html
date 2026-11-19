@@ -2,11 +2,13 @@
 <html>
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>RR Check-In · prototype v2</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>RR Check-In · prototype v3</title>
 <style>
   :root { --bg:#0f1115; --card:#1a1d24; --line:#2a2f3a; --text:#eef0f4; --muted:#9aa3b2; --ok:#3ecf8e; --bad:#ff6b6b; --warn:#f5b84b; --accent:#4c8dff; }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body, button, label, .btn { touch-action:manipulation; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
+  #cam, #cam * { touch-action:none; }
   body { margin:0; background:var(--bg); color:var(--text); font:16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
   header { padding:16px 16px 8px; }
   h1 { font-size:20px; margin:0; }
@@ -45,7 +47,7 @@
 </head>
 <body>
 <header>
-  <h1>RR Check-In · camera test v2</h1>
+  <h1>RR Check-In · camera test v3</h1>
   <div class="sub">Prototype only — photos go to a test folder in Drive, not to any car or trip.</div>
 </header>
 
@@ -107,6 +109,16 @@
       .then(function (j) { if (!j.ok) throw new Error(j.error || 'Upload failed'); return j.result; });
   }
   var $ = function (id) { return document.getElementById(id); };
+  // Stop iOS Safari from zooming on fast repeated taps or pinches.
+  ['gesturestart', 'gesturechange', 'gestureend', 'dblclick'].forEach(function (t) {
+    document.addEventListener(t, function (e) { e.preventDefault(); }, { passive: false });
+  });
+  var lastTouchEnd = 0;
+  document.addEventListener('touchend', function (e) {
+    var now = Date.now();
+    if (now - lastTouchEnd < 350 && e.target && e.target.id === 'shutter') { e.preventDefault(); e.target.click(); }
+    lastTouchEnd = now;
+  }, { passive: false });
 
   var results = {
     liveCamera: 'not tested', nativeCamera: 'not tested', location: 'not tested', upload: hasBackend ? 'not tested' : 'no backend',
