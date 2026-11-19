@@ -64,6 +64,10 @@
   #shutter:active { transform:scale(.93); }
   #flash { position:fixed; inset:0; background:#fff; opacity:0; pointer-events:none; z-index:11; transition:opacity .12s; }
   #lowres { display:none; }
+  #cam.odo #dmgBtn, #cam.odo #camDone { visibility:hidden; }
+  #cam.odo #camFrame { border:3px dashed #fff; }
+  .odoRow img { width:72px; height:72px; object-fit:cover; border-radius:8px; }
+  .need { color:var(--bad); font-weight:600; }
   #camBack { width:auto; flex:none; padding:9px 14px; font-size:15px; background:#000a; border-radius:999px; margin-right:6px; }
   #camTop .camLeft { display:flex; align-items:flex-start; }
   .thumbs { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
@@ -139,6 +143,8 @@
   <h1>Finish check-in</h1>
   <div class="card"><div class="plate" id="fPlate"></div><div class="sub" id="fInfo"></div><div class="thumbs" id="fThumbs"></div></div>
   <button class="secondary" id="moreBtn">‹ Take more photos</button>
+  <h2>Odometer</h2>
+  <div id="odoBox"></div>
   <div id="dmgBox" style="display:none">
     <h2>Damage notes</h2>
     <textarea id="dmgNote" placeholder="What and where (e.g. scratch, rear bumper, left side)"></textarea>
@@ -183,7 +189,7 @@
 <script>
 (function () {
   'use strict';
-  var VERSION = '1.0.0';
+  var VERSION = '1.1.0';
   var ENDPOINT = 'https://script.google.com/macros/s/AKfycbwRc30pniHOAfDf9Q8e7azzdOX_lV1fcSaNKv4_FEeWJBG-yNTN56JH-Xz95qsQpl1e/exec';
   var MAX_EDGE = 1280, QUALITY = 0.72, ODO_EDGE = 1600, ODO_QUALITY = 0.85, PARALLEL = 4;
   var $ = function (id) { return document.getElementById(id); };
@@ -423,7 +429,7 @@
       current = { checkinId: r.checkinId, plate: r.plate, label: r.label, type: r.type, walk: 0, dmg: 0, odo: false, thumbs: [] };
       store('rr_current', current);
       btn.textContent = 'Open camera'; btn.disabled = false;
-      openCamera();
+      openCamera('walk');
     }).catch(function (e) {
       btn.textContent = 'Open camera'; btn.disabled = false;
       $('startErr').textContent = e.server ? e.message : 'No connection — move to better signal and try again';
@@ -431,14 +437,16 @@
   };
 
   // ---------- CAMERA ----------
-  var current = null, stream = null, damageMode = false;
+  var current = null, stream = null, damageMode = false, odoMode = false;
   function shotLabel() {
-    if (!current.odo) return 'Odometer — dash lit, digits readable';
+    if (odoMode) return 'Odometer — car on, dash lit, mileage readable';
     if (damageMode) return 'Damage · photo ' + (current.dmg + 1);
     return 'Walkaround · photo ' + (current.walk + 1);
   }
-  function openCamera() {
-    damageMode = false; $('cam').classList.remove('damage'); $('dmgBtn').classList.remove('on');
+  function openCamera(mode) {
+    odoMode = mode === 'odo';
+    damageMode = false; $('cam').classList.remove('damage'); $('dmgBtn').classList.remove('on'); $('dmgBtn').textContent = 'Damage';
+    $('cam').classList.toggle('odo', odoMode);
     $('shotLabel').textContent = shotLabel(); updateCounter();
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { useNative(); return; }
     var want = { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1440 } }, audio: false };
@@ -455,7 +463,7 @@
   }
   function closeCamera() { if (stream) stream.getTracks().forEach(function (t) { t.stop(); }); stream = null; $('cam').classList.remove('on'); }
   $('dmgBtn').onclick = function () {
-    if (!current.odo) return;                       // odometer first
+    if (odoMode) return;
     damageMode = !damageMode;
     $('cam').classList.toggle('damage', damageMode); $('dmgBtn').classList.toggle('on', damageMode);
     $('dmgBtn').textContent = damageMode ? 'Damage ON' : 'Damage';
@@ -465,6 +473,7 @@
   $('camBack').onclick = function () {
     closeCamera();
     if (!current) { show('s-home'); return; }
+    if (odoMode) { odoMode = false; toFinish(); return; }
     if (!current.odo && !current.walk && !current.dmg) { dropCheckin(); show(pick ? 's-type' : 's-home'); return; }   // nothing taken yet: just go back
     toFinish();
   };
@@ -480,12 +489,12 @@
   $('shutter').onclick = function () {
     var v = $('video'); if (!v.videoWidth) return;
     $('flash').style.opacity = .7; setTimeout(function () { $('flash').style.opacity = 0; }, 80);
-    addShot(toJpeg(v, v.videoWidth, v.videoHeight, !current.odo));
+    addShot(toJpeg(v, v.videoWidth, v.videoHeight, odoMode));
   };
   $('nativeInput').onchange = function (ev) {
     var f = ev.target.files && ev.target.files[0]; if (!f || !current) return;
     var img = new Image(), url = URL.createObjectURL(f);
-    img.onload = function () { addShot(toJpeg(img, img.naturalWidth, img.naturalHeight, !current.odo)); URL.revokeObjectURL(url); if (!stream) toFinish(); };
+    img.onload = function () { var wasOdo = odoMode; addShot(toJpeg(img, img.naturalWidth, img.naturalHeight, odoMode)); URL.revokeObjectURL(url); if (!stream && !wasOdo) toFinish(); };
     img.src = url; ev.target.value = '';
   };
   function toJpeg(src, w, h, isOdo) {
@@ -500,8 +509,17 @@
   function addShot(shot) {
     var dataUrl = shot.dataUrl;
     var kind, n;
-    if (!current.odo) { kind = 'odo'; n = 0; current.odo = true; }
-    else if (damageMode) { kind = 'damage'; n = ++current.dmg; }
+    if (odoMode) {
+      // one odometer photo per check-in: a retake replaces any earlier one that hasn't uploaded yet
+      var id = current.checkinId;
+      queue = queue.filter(function (q) { if (q.checkinId === id && q.kind === 'odo' && !q.busy) { dbDel(q.k); var s = stats[id]; if (s) s.total--; return false; } return true; });
+      kind = 'odo'; n = current.odoN || 0; current.odoN = n + 1; current.odo = true; current.odoThumb = shot.thumb;
+      store('rr_current', current);
+      enqueue({ op: 'photo', checkinId: current.checkinId, n: n, kind: kind, dataUrl: dataUrl, takenAt: new Date().toISOString() });
+      odoMode = false; closeCamera(); toFinish();
+      return;
+    }
+    if (damageMode) { kind = 'damage'; n = ++current.dmg; }
     else { kind = 'walk'; n = ++current.walk; }
     if (current.thumbs.length < 12) current.thumbs.push(shot.thumb);
     store('rr_current', current);
@@ -523,6 +541,7 @@
     $('fInfo').textContent = current.type + ' · ' + total + ' photo' + (total === 1 ? '' : 's') + (current.dmg ? ' (' + current.dmg + ' damage)' : '');
     $('fThumbs').innerHTML = current.thumbs.filter(String).map(function (t) { return '<img src="' + t + '">'; }).join('');
     $('dmgBox').style.display = current.dmg ? 'block' : 'none';
+    renderOdo();
     $('finishErr').textContent = '';
     show('s-finish');
     gps = null; $('gpsStatus').textContent = 'Getting location…';
@@ -533,8 +552,20 @@
       }, function () { $('gpsStatus').textContent = 'Location not available — type where you parked'; }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 });
     } else $('gpsStatus').textContent = '';
   }
-  $('moreBtn').onclick = function () { openCamera(); };
-  $('finBack').onclick = function () { openCamera(); };
+  $('moreBtn').onclick = function () { openCamera('walk'); };
+  $('finBack').onclick = function () { openCamera('walk'); };
+  function renderOdo() {
+    var box = $('odoBox');
+    if (current && current.odo) {
+      box.innerHTML = '<div class="row odoRow">' + (current.odoThumb ? '<img src="' + current.odoThumb + '">' : '') +
+        '<div class="grow sub">Odometer photo saved ✓</div><button class="small secondary" id="odoRetake">Retake</button></div>';
+      $('odoRetake').onclick = function () { openCamera('odo'); };
+    } else {
+      box.innerHTML = '<button id="odoBtn">📷 Take odometer photo</button><div class="sub need" style="margin-top:6px">Required — car on, mileage readable</div>';
+      $('odoBtn').onclick = function () { openCamera('odo'); };
+    }
+    $('finishBtn').disabled = !(current && current.odo);
+  }
   var cancelArmed = null;
   $('cancelBtn').onclick = function () {
     var b = $('cancelBtn');
