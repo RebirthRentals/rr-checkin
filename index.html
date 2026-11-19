@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>RR Check-In · prototype</title>
+<style>
+  :root { --bg:#0f1115; --card:#1a1d24; --line:#2a2f3a; --text:#eef0f4; --muted:#9aa3b2; --ok:#3ecf8e; --bad:#ff6b6b; --warn:#f5b84b; --accent:#4c8dff; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  header { padding:16px 16px 8px; }
+  h1 { font-size:20px; margin:0; }
+  .sub { color:var(--muted); font-size:14px; margin-top:2px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; margin:12px; padding:14px; }
+  .card h2 { font-size:16px; margin:0 0 6px; }
+  .card p { margin:4px 0 10px; color:var(--muted); font-size:14px; }
+  button, .btn { display:block; width:100%; border:0; border-radius:12px; padding:14px; font-size:17px; font-weight:600; background:var(--accent); color:#fff; text-align:center; cursor:pointer; }
+  button.secondary, .btn.secondary { background:#2b3140; }
+  button:disabled { opacity:.45; }
+  .row { display:flex; gap:8px; }
+  .row > * { flex:1; }
+  .status { font-size:14px; margin-top:8px; }
+  .ok { color:var(--ok); } .bad { color:var(--bad); } .warn { color:var(--warn); } .muted { color:var(--muted); }
+  #cam { display:none; position:fixed; inset:0; background:#000; z-index:10; flex-direction:column; }
+  #cam.on { display:flex; }
+  #video { flex:1; width:100%; object-fit:cover; background:#000; }
+  #camTop { position:absolute; top:0; left:0; right:0; padding:14px 16px; padding-top:max(14px, env(safe-area-inset-top)); background:linear-gradient(#000a,#0000); display:flex; justify-content:space-between; align-items:center; font-weight:600; }
+  #shotLabel { background:#0008; padding:6px 10px; border-radius:999px; }
+  #upCount { background:#0008; padding:6px 10px; border-radius:999px; font-size:14px; }
+  #camBottom { padding:16px; padding-bottom:max(16px, env(safe-area-inset-bottom)); display:flex; align-items:center; justify-content:space-between; background:#000; }
+  #shutter { width:76px; height:76px; border-radius:50%; background:#fff; border:5px solid #888; padding:0; }
+  #shutter:active { transform:scale(.94); }
+  #camDone, #camFlip { width:auto; padding:12px 16px; font-size:15px; background:#2b3140; }
+  #flash { position:fixed; inset:0; background:#fff; opacity:0; pointer-events:none; z-index:11; transition:opacity .15s; }
+  .thumbs { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+  .thumb { position:relative; width:64px; height:64px; border-radius:8px; overflow:hidden; background:#000; }
+  .thumb img { width:100%; height:100%; object-fit:cover; }
+  .thumb span { position:absolute; bottom:2px; right:3px; font-size:12px; text-shadow:0 0 3px #000; }
+  .thumb.odo { outline:2px solid var(--warn); }
+  table { width:100%; border-collapse:collapse; font-size:15px; }
+  td { padding:8px 4px; border-bottom:1px solid var(--line); vertical-align:top; }
+  td:last-child { text-align:right; }
+  input[type=file] { display:none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>RR Check-In · camera test</h1>
+  <div class="sub">Prototype only — photos go to a test folder in Drive, not to any car or trip.</div>
+</header>
+
+<div class="card">
+  <h2>1 · Live camera (main method)</h2>
+  <p>Opens the camera inside this page. Tap the white button for each photo — the first one is the odometer. Photos upload while you keep shooting.</p>
+  <button id="startCam">Open live camera</button>
+  <div id="camStatus" class="status muted">Not tested yet</div>
+</div>
+
+<div class="card">
+  <h2>2 · Backup camera (one shot at a time)</h2>
+  <p>Opens the regular iPhone camera for a single photo — for dark lots or if the live camera fails.</p>
+  <label class="btn secondary" for="nativeInput">Take one photo</label>
+  <input id="nativeInput" type="file" accept="image/*" capture="environment">
+  <div id="nativeStatus" class="status muted">Not tested yet</div>
+</div>
+
+<div class="card">
+  <h2>3 · Phone location</h2>
+  <p>Records where the car was parked when the check-in finishes.</p>
+  <button id="locBtn" class="secondary">Get my location</button>
+  <div id="locStatus" class="status muted">Not tested yet</div>
+</div>
+
+<div class="card">
+  <h2>Photos uploaded to Drive</h2>
+  <div id="upStatus" class="status muted">None yet</div>
+  <div id="thumbs" class="thumbs"></div>
+</div>
+
+<div class="card">
+  <h2>Results</h2>
+  <table id="results"></table>
+  <div style="height:10px"></div>
+  <button id="sendReport">Save results to Drive</button>
+  <div id="reportStatus" class="status muted"></div>
+</div>
+
+<div id="cam">
+  <video id="video" playsinline autoplay muted></video>
+  <div id="camTop"><span id="shotLabel">Odometer</span><span id="upCount">0 / 0 uploaded</span></div>
+  <div id="camBottom">
+    <button id="camFlip">Flip</button>
+    <button id="shutter" aria-label="Take photo"></button>
+    <button id="camDone">Done</button>
+  </div>
+</div>
+<div id="flash"></div>
+
+<script>
+(function () {
+  var MAX_EDGE = 1600, QUALITY = 0.82;
+  var ENDPOINT = 'https://script.google.com/macros/s/AKfycbwRc30pniHOAfDf9Q8e7azzdOX_lV1fcSaNKv4_FEeWJBG-yNTN56JH-Xz95qsQpl1e/exec';
+  var hasBackend = true;
+  function post(body) {
+    return fetch(ENDPOINT, { method: 'POST', body: JSON.stringify(body), redirect: 'follow' })
+      .then(function (r) { return r.json(); })
+      .then(function (j) { if (!j.ok) throw new Error(j.error || 'Upload failed'); return j.result; });
+  }
+  var $ = function (id) { return document.getElementById(id); };
+
+  var results = {
+    liveCamera: 'not tested', nativeCamera: 'not tested', location: 'not tested', upload: hasBackend ? 'not tested' : 'no backend',
+    photosTaken: 0, photosUploaded: 0, avgPhotoKB: null, userAgent: navigator.userAgent, testedAt: new Date().toString()
+  };
+  var shots = [], queue = [], uploading = false, stream = null, facing = 'environment', sizes = [];
+
+  function setStatus(el, text, cls) { el.textContent = text; el.className = 'status ' + (cls || 'muted'); }
+  function renderResults() {
+    var rows = [
+      ['Live camera in page', results.liveCamera],
+      ['Backup iPhone camera', results.nativeCamera],
+      ['Phone location', results.location],
+      ['Upload to Drive', results.upload],
+      ['Photos taken / uploaded', results.photosTaken + ' / ' + results.photosUploaded],
+      ['Average photo size', results.avgPhotoKB ? results.avgPhotoKB + ' KB' : '—']
+    ];
+    $('results').innerHTML = rows.map(function (r) {
+      var v = String(r[1]), cls = /^works|^ok/i.test(v) ? 'ok' : /fail|blocked|denied|error|no backend/i.test(v) ? 'bad' : 'muted';
+      return '<tr><td>' + r[0] + '</td><td class="' + cls + '">' + v + '</td></tr>';
+    }).join('');
+  }
+  renderResults();
+
+  // ---- image helpers ----
+  function canvasFromSource(src, w, h) {
+    var scale = Math.min(1, MAX_EDGE / Math.max(w, h));
+    var c = document.createElement('canvas');
+    c.width = Math.round(w * scale); c.height = Math.round(h * scale);
+    c.getContext('2d').drawImage(src, 0, 0, c.width, c.height);
+    return c.toDataURL('image/jpeg', QUALITY);
+  }
+  function addShot(dataUrl, source) {
+    var n = shots.length, isOdo = n === 0;
+    var shot = { n: n, name: (isOdo ? 'ODO' : String(n).padStart(2, '0')) + '_' + Date.now() + '.jpg', dataUrl: dataUrl, source: source, state: 'queued', tries: 0 };
+    shots.push(shot); results.photosTaken = shots.length;
+    sizes.push(Math.round(dataUrl.length * 0.75 / 1024));
+    results.avgPhotoKB = Math.round(sizes.reduce(function (a, b) { return a + b; }, 0) / sizes.length);
+    var t = document.createElement('div'); t.className = 'thumb' + (isOdo ? ' odo' : '');
+    t.innerHTML = '<img src="' + dataUrl + '"><span id="t' + n + '">…</span>';
+    $('thumbs').appendChild(t);
+    $('shotLabel').textContent = 'Walkaround · photo ' + shots.length;
+    queue.push(shot); pump(); updateCounts(); renderResults();
+  }
+  function updateCounts() {
+    var done = shots.filter(function (s) { return s.state === 'done'; }).length;
+    results.photosUploaded = done;
+    $('upCount').textContent = done + ' / ' + shots.length + ' uploaded';
+    setStatus($('upStatus'), done + ' of ' + shots.length + ' uploaded' + (queue.length ? ' · uploading…' : ''), done === shots.length && done ? 'ok' : 'muted');
+  }
+
+  // ---- background upload with retry ----
+  function pump() {
+    if (uploading || !queue.length) return;
+    if (!hasBackend) { queue.forEach(function (s) { s.state = 'skipped'; var el = $('t' + s.n); if (el) el.textContent = '–'; }); queue = []; updateCounts(); return; }
+    uploading = true;
+    var shot = queue[0]; shot.tries++;
+    post({ op: 'photo', dataUrl: shot.dataUrl, name: shot.name, meta: { source: shot.source, n: shot.n, takenAt: new Date().toISOString() } })
+      .then(function () {
+        shot.state = 'done'; queue.shift(); uploading = false;
+        var el = $('t' + shot.n); if (el) el.textContent = '✓';
+        results.upload = 'works'; updateCounts(); renderResults(); pump();
+      })
+      .catch(function (err) {
+        uploading = false;
+        if (shot.tries < 4) { setTimeout(pump, 1500 * shot.tries); }
+        else { shot.state = 'failed'; queue.shift(); var el = $('t' + shot.n); if (el) el.textContent = '✕'; results.upload = 'failed: ' + (err && err.message || err); renderResults(); pump(); }
+        updateCounts();
+      });
+  }
+
+  // ---- 1. live camera ----
+  function openCamera() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      results.liveCamera = 'blocked — camera not available to this page';
+      setStatus($('camStatus'), 'Live camera is not available here. Try the backup camera below.', 'bad'); renderResults(); return;
+    }
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: facing }, width: { ideal: 1920 }, height: { ideal: 1440 } }, audio: false })
+      .then(function (s) {
+        stream = s; var v = $('video'); v.srcObject = s;
+        $('cam').classList.add('on');
+        $('shotLabel').textContent = shots.length ? 'Walkaround · photo ' + (shots.length + 1) : 'Odometer';
+        return v.play();
+      })
+      .then(function () {
+        results.liveCamera = 'works'; setStatus($('camStatus'), 'Live camera works ✓', 'ok'); renderResults();
+      })
+      .catch(function (e) {
+        results.liveCamera = 'failed: ' + (e && (e.name + ' ' + e.message) || e);
+        setStatus($('camStatus'), 'Live camera failed (' + (e && e.name || 'error') + '). Try the backup camera below.', 'bad');
+        closeCamera(); renderResults();
+      });
+  }
+  function closeCamera() {
+    if (stream) stream.getTracks().forEach(function (t) { t.stop(); });
+    stream = null; $('cam').classList.remove('on');
+  }
+  $('startCam').onclick = openCamera;
+  $('camDone').onclick = closeCamera;
+  $('camFlip').onclick = function () { facing = facing === 'environment' ? 'user' : 'environment'; closeCamera(); openCamera(); };
+  $('shutter').onclick = function () {
+    var v = $('video'); if (!v.videoWidth) return;
+    $('flash').style.opacity = .7; setTimeout(function () { $('flash').style.opacity = 0; }, 90);
+    addShot(canvasFromSource(v, v.videoWidth, v.videoHeight), 'live');
+  };
+
+  // ---- 2. backup native camera ----
+  $('nativeInput').onchange = function (ev) {
+    var f = ev.target.files && ev.target.files[0]; if (!f) return;
+    var img = new Image(), url = URL.createObjectURL(f);
+    img.onload = function () {
+      addShot(canvasFromSource(img, img.naturalWidth, img.naturalHeight), 'native');
+      URL.revokeObjectURL(url);
+      results.nativeCamera = 'works'; setStatus($('nativeStatus'), 'Backup camera works ✓', 'ok'); renderResults();
+    };
+    img.onerror = function () { results.nativeCamera = 'failed: could not read photo'; setStatus($('nativeStatus'), 'Could not read that photo', 'bad'); renderResults(); };
+    img.src = url; ev.target.value = '';
+  };
+
+  // ---- 3. location ----
+  $('locBtn').onclick = function () {
+    if (!navigator.geolocation) { results.location = 'blocked — not available to this page'; setStatus($('locStatus'), 'Location not available here', 'bad'); renderResults(); return; }
+    setStatus($('locStatus'), 'Asking for location…', 'muted');
+    navigator.geolocation.getCurrentPosition(function (p) {
+      var lat = p.coords.latitude.toFixed(5), lng = p.coords.longitude.toFixed(5), acc = Math.round(p.coords.accuracy);
+      results.location = 'works (±' + acc + ' m)'; results.coords = { lat: +lat, lng: +lng, accuracyM: acc };
+      $('locStatus').innerHTML = '<span class="ok">Location works ✓</span> ' + lat + ', ' + lng + ' (±' + acc + ' m) · ' +
+        '<a style="color:var(--accent)" href="https://maps.google.com/?q=' + lat + ',' + lng + '">open in Maps</a>';
+      renderResults();
+    }, function (e) {
+      results.location = 'failed: ' + (e && e.message || e.code);
+      setStatus($('locStatus'), 'Location failed (' + (e && e.message || e.code) + ')', 'bad'); renderResults();
+    }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+  };
+
+  // ---- results ----
+  $('sendReport').onclick = function () {
+    if (!hasBackend) { setStatus($('reportStatus'), 'No backend.', 'bad'); return; }
+    results.testedAt = new Date().toString();
+    setStatus($('reportStatus'), 'Saving…', 'muted');
+    post({ op: 'report', report: results })
+      .then(function (name) { setStatus($('reportStatus'), 'Saved to Drive as ' + name + ' ✓', 'ok'); })
+      .catch(function (e) { setStatus($('reportStatus'), 'Could not save: ' + (e && e.message || e), 'bad'); });
+  };
+})();
+</script>
+</body>
+</html>
