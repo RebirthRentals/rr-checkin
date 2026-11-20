@@ -134,7 +134,26 @@
   </div>
   <div class="spacer"></div>
   <button id="openCamBtn" disabled>Open camera</button>
+  <button class="secondary" id="libBtn" style="display:none;margin-top:10px" disabled>🖼 Upload plate + odometer from Photos</button>
   <div class="err" id="startErr"></div>
+</div>
+
+<!-- OWNERS: PLATE + ODOMETER FROM THE PHOTO LIBRARY -->
+<div class="screen" id="s-lib">
+  <div class="row"><button class="small secondary" id="libBack">‹ Back</button><div class="grow"></div></div>
+  <h1>Plate + odometer</h1>
+  <div class="card"><div class="plate" id="lPlate"></div><div class="sub" id="lLabel"></div></div>
+  <div class="sub">For check-ins already done in the Turo / Mobi app. Pick both photos from your library. The mileage only reaches FleetView if the plate in the photo matches this car.</div>
+  <h2>1 · License plate photo</h2>
+  <div class="card" id="lib_plate"><div class="row odoRow slot"></div><button class="secondary" style="margin-top:8px">Choose plate photo</button></div>
+  <h2>2 · Odometer photo</h2>
+  <div class="card" id="lib_odo"><div class="row odoRow slot"></div><button class="secondary" style="margin-top:8px">Choose odometer photo</button></div>
+  <div id="libWarn"></div>
+  <h2>Where is the car parked?</h2>
+  <input class="text" id="libParked" placeholder="Lot / level / spot (optional)" autocomplete="off">
+  <div class="spacer"></div>
+  <button id="libSave" disabled>Save plate + odometer</button>
+  <div class="err" id="libErr"></div>
 </div>
 
 <!-- FINISH -->
@@ -186,6 +205,7 @@
 </div>
 <div id="flash"></div>
 <input id="nativeInput" type="file" accept="image/*" capture="environment">
+<input id="libInput" type="file" accept="image/*">
 
 <script>
 (function () {
@@ -408,6 +428,8 @@
     $('cPlate').textContent = v.plate; $('cLabel').textContent = v.label;
     Array.prototype.forEach.call($('types').children, function (b) { b.classList.toggle('sel', b.getAttribute('data-type') === pick.type); });
     $('openCamBtn').disabled = !pick.type; $('startErr').textContent = '';
+    $('libBtn').style.display = session && session.role === 'owner' ? 'block' : 'none';
+    $('libBtn').disabled = !pick.type;
     show('s-type');
   }
   function startFromJob(j) {
@@ -421,7 +443,7 @@
     b.onclick = function () {
       pick.type = b.getAttribute('data-type');
       Array.prototype.forEach.call($('types').children, function (x) { x.classList.toggle('sel', x === b); });
-      $('openCamBtn').disabled = false;
+      $('openCamBtn').disabled = false; $('libBtn').disabled = false;
     };
   });
   $('openCamBtn').onclick = function () {
@@ -595,6 +617,126 @@
   };
   var lastDone = null;
   $('homeBtn').onclick = function () { show('s-home'); };
+
+  // ---------- OWNERS: plate + odometer from the photo library ----------
+  // Owners do the walkaround inside the Turo / Mobi apps for now; here they only send a plate photo and an
+  // odometer photo. Nothing is started on the server until both are picked and Save is tapped. The Drive
+  // check-in reader logs the mileage only if the plate in the plate photo matches the car picked here.
+  var lib = null, libSlot = null;
+  $('libBtn').onclick = function () {
+    if (!pick || !pick.type) return;
+    lib = { plate: null, odo: null };
+    $('lPlate').textContent = pick.plate; $('lLabel').textContent = pick.label + ' · ' + pick.type;
+    $('libParked').value = ''; $('libErr').textContent = '';
+    renderLib(); show('s-lib');
+  };
+  $('libBack').onclick = function () { lib = null; show('s-type'); };
+  ['plate', 'odo'].forEach(function (k) {
+    $('lib_' + k).querySelector('button').onclick = function () { libSlot = k; $('libErr').textContent = ''; $('libInput').click(); };
+  });
+  $('libInput').onchange = function (ev) {
+    var f = ev.target.files && ev.target.files[0], slot = libSlot; ev.target.value = '';
+    if (!f || !lib || !slot) return;
+    var box = $('lib_' + slot).querySelector('.slot');
+    box.innerHTML = '<div class="sub">Reading photo…</div>';
+    photoDate(f).then(function (taken) {
+      var img = new Image(), url = URL.createObjectURL(f);
+      img.onload = function () {
+        var shot = toJpeg(img, img.naturalWidth, img.naturalHeight, true);   // full odometer quality so digits and plates stay readable
+        URL.revokeObjectURL(url);
+        shot.takenAt = taken ? taken.toISOString() : '';
+        lib[slot] = shot; renderLib();
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); lib[slot] = null; renderLib(); $('libErr').textContent = 'Couldn’t open that photo — try another one'; };
+      img.src = url;
+    });
+  };
+  function whenText(iso) {
+    var d = new Date(iso);
+    return d.toLocaleDateString([], { weekday: 'short', month: 'numeric', day: 'numeric' }) + ' ' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  }
+  function renderLib() {
+    if (!lib) return;
+    ['plate', 'odo'].forEach(function (k) {
+      var s = lib[k], card = $('lib_' + k);
+      card.querySelector('.slot').innerHTML = s ? '<img src="' + s.thumb + '"><div class="grow sub">' +
+        (s.takenAt ? 'Taken ' + esc(whenText(s.takenAt)) : 'Photo date unknown — today will be used') + '</div>' : '';
+      card.querySelector('button').textContent = s ? 'Change photo' : (k === 'plate' ? 'Choose plate photo' : 'Choose odometer photo');
+    });
+    var warn = [];
+    if (lib.plate && lib.odo && lib.plate.takenAt && lib.odo.takenAt &&
+        Math.abs(Date.parse(lib.plate.takenAt) - Date.parse(lib.odo.takenAt)) > 3 * 3600000) {
+      warn.push('These two photos were taken more than 3 hours apart. Make sure they’re from the same car and visit.');
+    }
+    ['plate', 'odo'].forEach(function (k) {
+      var s = lib[k];
+      if (s && s.takenAt && Date.now() - Date.parse(s.takenAt) > 2 * 86400000) warn.push('The ' + (k === 'plate' ? 'plate' : 'odometer') + ' photo is more than 2 days old.');
+    });
+    $('libWarn').innerHTML = warn.map(function (w) { return '<div class="banner">' + esc(w) + '</div>'; }).join('');
+    $('libSave').disabled = !(lib.plate && lib.odo);
+  }
+  $('libSave').onclick = function () {
+    if (!lib || !lib.plate || !lib.odo) { $('libErr').textContent = 'Pick both photos first'; return; }
+    var btn = $('libSave'); btn.disabled = true; btn.textContent = 'Saving…'; $('libErr').textContent = '';
+    var shots = lib, parked = $('libParked').value.trim(), p = pick;
+    api('start', { vehicleId: p.vehicleId, type: p.type, assignmentId: p.assignmentId }).then(function (r) {
+      var id = r.checkinId, now = new Date().toISOString();
+      stats[id] = stats[id] || { total: 0, done: 0 };
+      enqueue({ op: 'photo', checkinId: id, n: 0, kind: 'plate', dataUrl: shots.plate.dataUrl, takenAt: shots.plate.takenAt || now });
+      enqueue({ op: 'photo', checkinId: id, n: 0, kind: 'odo', dataUrl: shots.odo.dataUrl, takenAt: shots.odo.takenAt || now });
+      enqueue({ op: 'finish', checkinId: id, photos: 2, odo: true, damage: false, damageNote: '', parkedAt: parked });
+      btn.textContent = 'Save plate + odometer';
+      lib = null;
+      $('doneTitle').textContent = r.plate + ' · ' + r.type;
+      $('doneSub').textContent = 'Plate + odometer photos saved. FleetView logs the mileage once the plate in the photo is checked against ' + r.plate + '.';
+      $('refreshNote').innerHTML = '';
+      show('s-done'); renderPending();
+    }).catch(function (e) {
+      btn.textContent = 'Save plate + odometer'; btn.disabled = false;
+      $('libErr').textContent = e.server ? e.message : 'No connection — move to better signal and try again';
+    });
+  };
+  // Date the photo was taken, from its EXIF data (DateTimeOriginal). Null if the file has none.
+  function photoDate(file) {
+    return new Promise(function (res) {
+      try {
+        var r = new FileReader();
+        r.onload = function () { try { res(exifDate(new DataView(r.result))); } catch (e) { res(null); } };
+        r.onerror = function () { res(null); };
+        r.readAsArrayBuffer(file.slice(0, 262144));
+      } catch (e) { res(null); }
+    });
+  }
+  function exifDate(v) {
+    if (v.byteLength < 4 || v.getUint16(0) !== 0xFFD8) return null;
+    var off = 2;
+    while (off + 10 < v.byteLength) {
+      var marker = v.getUint16(off), len = v.getUint16(off + 2);
+      if ((marker & 0xFF00) !== 0xFF00) return null;
+      if (marker === 0xFFE1 && v.getUint32(off + 4) === 0x45786966) {
+        var t = off + 10, le = v.getUint16(t) === 0x4949;
+        var u16 = function (p) { return v.getUint16(t + p, le); }, u32 = function (p) { return v.getUint32(t + p, le); };
+        var tags = function (ifd, want) {
+          var n = u16(ifd), out = {};
+          for (var i = 0; i < n; i++) { var e = ifd + 2 + i * 12, tag = u16(e); if (want.indexOf(tag) >= 0) out[tag] = e; }
+          return out;
+        };
+        var str = function (e) {
+          var cnt = u32(e + 4), p = cnt > 4 ? u32(e + 8) : e + 8, s = '';
+          for (var i = 0; i < cnt - 1 && t + p + i < v.byteLength; i++) s += String.fromCharCode(v.getUint8(t + p + i));
+          return s;
+        };
+        var raw = '', a = tags(u32(4), [0x8769, 0x0132]);
+        if (a[0x0132]) raw = str(a[0x0132]);
+        if (a[0x8769]) { var b = tags(u32(a[0x8769] + 8), [0x9003, 0x9004]); if (b[0x9003]) raw = str(b[0x9003]); else if (b[0x9004]) raw = str(b[0x9004]); }
+        var m = /^(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})/.exec(raw);
+        return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]) : null;
+      }
+      if (marker === 0xFFDA) return null;          // image data starts: no EXIF block before it
+      off += 2 + len;
+    }
+    return null;
+  }
 
   // ---------- UPLOAD QUEUE (saved on the phone until it reaches Drive) ----------
   var db = null, queue = [], active = 0, stats = {}, memOnly = false;
