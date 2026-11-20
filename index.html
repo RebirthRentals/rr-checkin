@@ -70,6 +70,15 @@
   .need { color:var(--bad); font-weight:600; }
   #camBack { width:auto; flex:none; padding:9px 14px; font-size:15px; background:#000a; border-radius:999px; margin-right:6px; }
   #camTop .camLeft { display:flex; align-items:flex-start; }
+  #camTop .camRight { display:flex; flex-direction:column; align-items:flex-end; gap:6px; }
+  #camTop .camRight button { width:auto; padding:8px 12px; font-size:14px; background:#000a; border-radius:999px; white-space:nowrap; }
+  #camTop .camRight button.on { background:var(--warn); color:#000; }
+  #torchBtn { display:none; }
+  #nightPanel { display:none; position:absolute; left:20px; right:20px; top:38%; transform:translateY(-50%); text-align:center; color:var(--text); font-size:17px; line-height:1.45; }
+  #nightPanel .big { font-size:40px; margin-bottom:8px; }
+  #cam.night #video { visibility:hidden; }
+  #cam.night #nightPanel { display:block; }
+  #cam.night #nightBtn { background:var(--warn); color:#000; }
   .thumbs { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
   .thumbs img { width:56px; height:56px; object-fit:cover; border-radius:8px; }
   input[type=file] { display:none; }
@@ -195,8 +204,9 @@
   <div id="camFrame"></div>
   <div id="camTop">
     <div class="camLeft"><button id="camBack">‹ Back</button><div><div class="pill" id="shotLabel">Odometer</div><div class="pill warn" id="lowres" style="margin-top:6px">Low camera quality</div></div></div>
-    <div class="pill" id="upCount">0 / 0 uploaded</div>
+    <div class="camRight"><div class="pill" id="upCount">0 / 0 uploaded</div><button id="nightBtn">🌙 Night / flash</button><button id="torchBtn">🔦 Light</button></div>
   </div>
+  <div id="nightPanel"><div class="big">🌙</div><b>Night mode</b><br>Each tap of the white button opens the iPhone camera. Tap ⚡ there to turn the flash on (or let Night mode do it). Damage and Done work as usual.</div>
   <div id="camBottom">
     <button id="dmgBtn">Damage</button>
     <button id="shutter" aria-label="Take photo"></button>
@@ -461,6 +471,9 @@
 
   // ---------- CAMERA ----------
   var current = null, stream = null, damageMode = false, odoMode = false;
+  // Night mode: iPhone Safari can't fire the flash from an in-page camera, so each photo opens the iPhone's own
+  // camera (flash + Night mode). Remembered on this phone until switched off.
+  var nightMode = store('rr_night') === true, torchOn = false;
   function shotLabel() {
     if (odoMode) return 'Odometer — car on, dash lit, mileage readable';
     if (damageMode) return 'Damage · photo ' + (current.dmg + 1);
@@ -471,15 +484,35 @@
     damageMode = false; $('cam').classList.remove('damage'); $('dmgBtn').classList.remove('on'); $('dmgBtn').textContent = 'Damage';
     $('cam').classList.toggle('odo', odoMode);
     $('shotLabel').textContent = shotLabel(); updateCounter();
+    $('cam').classList.toggle('night', nightMode);
+    $('nightBtn').textContent = nightMode ? '☀️ Live camera' : '🌙 Night / flash';
+    torchOn = false; $('torchBtn').style.display = 'none'; $('torchBtn').classList.remove('on');
+    if (nightMode) { $('lowres').style.display = 'none'; $('cam').classList.add('on'); return; }
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { useNative(); return; }
     var want = { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1440 } }, audio: false };
     navigator.mediaDevices.getUserMedia(want).then(function (s) {
       stream = s; var v = $('video'); v.srcObject = s; $('cam').classList.add('on');
       return v.play().then(function () {
         setTimeout(function () { $('lowres').style.display = v.videoWidth && Math.max(v.videoWidth, v.videoHeight) < 1280 ? 'block' : 'none'; }, 800);
+        // a steady light (torch) where the phone allows it from a web page — shown only if supported
+        try { var t = s.getVideoTracks()[0], caps = t && t.getCapabilities ? t.getCapabilities() : {}; if (caps.torch) $('torchBtn').style.display = 'block'; } catch (e) {}
       });
     }).catch(function () { closeCamera(); useNative(); });
   }
+  $('nightBtn').onclick = function () {
+    if (!current) return;
+    var m = odoMode ? 'odo' : 'walk', dmg = damageMode;
+    nightMode = !nightMode; store('rr_night', nightMode);
+    if (stream) stream.getTracks().forEach(function (t) { t.stop(); }); stream = null;
+    openCamera(m);
+    if (dmg && !odoMode) $('dmgBtn').onclick();
+  };
+  $('torchBtn').onclick = function () {
+    var t = stream && stream.getVideoTracks()[0]; if (!t) return;
+    var want = !torchOn;
+    t.applyConstraints({ advanced: [{ torch: want }] }).then(function () { torchOn = want; $('torchBtn').classList.toggle('on', torchOn); })
+      .catch(function () { $('torchBtn').style.display = 'none'; });
+  };
   function useNative() {
     $('startErr').textContent = 'The in-page camera isn’t available — using the iPhone camera, one photo at a time.';
     $('nativeInput').click();
@@ -510,6 +543,7 @@
     renderPending();
   }
   $('shutter').onclick = function () {
+    if (nightMode) { $('nativeInput').click(); return; }
     var v = $('video'); if (!v.videoWidth) return;
     $('flash').style.opacity = .7; setTimeout(function () { $('flash').style.opacity = 0; }, 80);
     addShot(toJpeg(v, v.videoWidth, v.videoHeight, odoMode));
@@ -517,7 +551,7 @@
   $('nativeInput').onchange = function (ev) {
     var f = ev.target.files && ev.target.files[0]; if (!f || !current) return;
     var img = new Image(), url = URL.createObjectURL(f);
-    img.onload = function () { var wasOdo = odoMode; addShot(toJpeg(img, img.naturalWidth, img.naturalHeight, odoMode)); URL.revokeObjectURL(url); if (!stream && !wasOdo) toFinish(); };
+    img.onload = function () { var wasOdo = odoMode; addShot(toJpeg(img, img.naturalWidth, img.naturalHeight, odoMode)); URL.revokeObjectURL(url); if (!stream && !wasOdo && !nightMode) toFinish(); };
     img.src = url; ev.target.value = '';
   };
   function toJpeg(src, w, h, isOdo) {
